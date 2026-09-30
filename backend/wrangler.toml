@@ -1,0 +1,140 @@
+name = "chamber-backend"
+main = "src/index.ts"
+compatibility_date = "2025-02-24"
+compatibility_flags = ["nodejs_compat"]
+
+# =============================================================================
+#  LOCAL DEVELOPMENT  (default — used when you run `npx wrangler dev`)
+#
+#  Secrets for local dev go in `.dev.vars` (git-ignored).
+#  Copy `.dev.vars.example` → `.dev.vars` and fill in real values.
+#  Wrangler reads `.dev.vars` automatically during `wrangler dev`.
+# =============================================================================
+
+[vars]
+ENVIRONMENT   = "development"
+PLATFORM_DOMAIN = "121meet.com"
+
+# Local D1 — simulated by Miniflare
+[[d1_databases]]
+binding        = "DB"
+database_name  = "chamber-d1-prod"
+database_id    = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "db/migrations"
+
+# Local KV — simulated by Miniflare
+[[kv_namespaces]]
+binding = "KV"
+id      = "00000000000000000000000000000001"
+
+# Local R2 — simulated by Miniflare
+[[r2_buckets]]
+binding     = "STORAGE"
+bucket_name = "chamber-assets"
+
+# Secrets loaded from `.dev.vars` automatically (never commit that file):
+#
+#   SENDGRID_API_KEY          — Email OTP delivery          [REQUIRED]
+#   TWILIO_ACCOUNT_SID        — SMS OTP (Account SID)       [REQUIRED for phone login]
+#   TWILIO_AUTH_TOKEN         — SMS OTP (Auth Token)        [REQUIRED for phone login]
+#   TWILIO_FROM_NUMBER        — SMS sender number E.164     [REQUIRED for phone login]
+#   CHAMBER_ENCRYPTION_KEY    — AES-GCM 256-bit master key  [REQUIRED]
+#   JWT_SECRET                — Session signing secret      [REQUIRED]
+#   STRIPE_SECRET_KEY         — Stripe platform default     [OPTIONAL]
+#   STRIPE_WEBHOOK_SECRET     — Stripe webhook HMAC         [OPTIONAL]
+#   RAZORPAY_KEY_ID           — Razorpay platform default   [OPTIONAL]
+#   RAZORPAY_KEY_SECRET       — Razorpay secret             [OPTIONAL]
+#   OPENAI_API_KEY            — OpenAI GPT-4 features       [OPTIONAL]
+#   ANTHROPIC_API_KEY         — Anthropic Claude features   [OPTIONAL]
+#   GOOGLE_AI_API_KEY         — Google Gemini features      [OPTIONAL]
+
+
+# =============================================================================
+#  STAGING  (used when you run `npx wrangler deploy --env staging`)
+#
+#  Set secrets with: npx wrangler secret put <KEY> --env staging
+# =============================================================================
+
+[env.staging]
+name = "chamber-backend-staging"
+
+[env.staging.vars]
+ENVIRONMENT     = "staging"
+PLATFORM_DOMAIN = "121meet.com"
+
+[[env.staging.d1_databases]]
+binding        = "DB"
+database_name  = "chamber-d1-staging"
+database_id    = "REPLACE_WITH_STAGING_D1_DATABASE_ID"
+migrations_dir = "db/migrations"
+
+[[env.staging.kv_namespaces]]
+binding = "KV"
+id      = "REPLACE_WITH_STAGING_KV_NAMESPACE_ID"
+
+[[env.staging.r2_buckets]]
+binding     = "STORAGE"
+bucket_name = "chamber-assets-staging"
+
+# Secrets for staging — set via Cloudflare dashboard or wrangler CLI:
+#   npx wrangler secret put SENDGRID_API_KEY       --env staging
+#   npx wrangler secret put TWILIO_ACCOUNT_SID     --env staging
+#   npx wrangler secret put TWILIO_AUTH_TOKEN      --env staging
+#   npx wrangler secret put TWILIO_FROM_NUMBER     --env staging
+#   npx wrangler secret put CHAMBER_ENCRYPTION_KEY --env staging
+#   npx wrangler secret put JWT_SECRET             --env staging
+#   npx wrangler secret put STRIPE_SECRET_KEY      --env staging
+#   npx wrangler secret put STRIPE_WEBHOOK_SECRET  --env staging
+#   npx wrangler secret put RAZORPAY_KEY_ID        --env staging
+#   npx wrangler secret put RAZORPAY_KEY_SECRET    --env staging
+#   npx wrangler secret put OPENAI_API_KEY         --env staging
+#   npx wrangler secret put ANTHROPIC_API_KEY      --env staging
+#   npx wrangler secret put GOOGLE_AI_API_KEY      --env staging
+
+
+# =============================================================================
+#  PRODUCTION  (used when you run `npx wrangler deploy --env production`)
+#
+#  Set secrets with: npx wrangler secret put <KEY> --env production
+# =============================================================================
+
+[env.production]
+name = "chamber-backend-production"
+
+[env.production.vars]
+ENVIRONMENT     = "production"
+PLATFORM_DOMAIN = "121meet.com"
+
+[[env.production.d1_databases]]
+binding        = "DB"
+database_name  = "chamber-d1-prod"
+database_id    = "REPLACE_WITH_PRODUCTION_D1_DATABASE_ID"
+migrations_dir = "db/migrations"
+
+[[env.production.kv_namespaces]]
+binding = "KV"
+id      = "REPLACE_WITH_PRODUCTION_KV_NAMESPACE_ID"
+
+[[env.production.r2_buckets]]
+binding     = "STORAGE"
+bucket_name = "chamber-assets"
+
+# Custom domain routing for production Worker
+[[env.production.routes]]
+pattern = "api.121meet.com/*"
+zone_name = "121meet.com"
+
+# Secrets for production — set via Cloudflare dashboard or wrangler CLI:
+#   npx wrangler secret put SENDGRID_API_KEY       --env production
+#   npx wrangler secret put TWILIO_ACCOUNT_SID     --env production
+#   npx wrangler secret put TWILIO_AUTH_TOKEN      --env production
+#   npx wrangler secret put TWILIO_FROM_NUMBER     --env production
+#   npx wrangler secret put CHAMBER_ENCRYPTION_KEY --env production
+#   npx wrangler secret put JWT_SECRET             --env production
+#   npx wrangler secret put STRIPE_SECRET_KEY      --env production
+#   npx wrangler secret put STRIPE_WEBHOOK_SECRET  --env production
+#   npx wrangler secret put RAZORPAY_KEY_ID        --env production
+#   npx wrangler secret put RAZORPAY_KEY_SECRET    --env production
+#   npx wrangler secret put OPENAI_API_KEY         --env production
+#   npx wrangler secret put ANTHROPIC_API_KEY      --env production
+#   npx wrangler secret put GOOGLE_AI_API_KEY      --env production

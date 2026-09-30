@@ -1,0 +1,182 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:where(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Chamber dynamic branding tokens */
+  --color-chamber-primary: var(--chamber-primary);
+  --color-chamber-accent: var(--chamber-accent);
+
+  /* Centralized Single-Source-of-Truth Semantic Layout Tokens */
+  --color-header-utility: var(--header-utility);
+  --color-header-nav: var(--header-nav);
+  --color-hero: var(--hero);
+  --color-section-news: var(--section-news);
+  --color-section-alt: var(--section-alt);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: #FFFFFF;
+  --foreground: #0A0F1C;
+  --card: #FFFFFF;
+  --card-foreground: #0A0F1C;
+  --popover: #FFFFFF;
+  --popover-foreground: #0A0F1C;
+  --primary: #0B2447;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F3F4F6;
+  --secondary-foreground: #0B2447;
+  --muted: #F6F7F9;
+  --muted-foreground: #4B5563;
+  --accent: #F3F4F6;
+  --accent-foreground: #0B2447;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --border: #E5E7EB;
+  --input: #E5E7EB;
+  --ring: #0B2447;
+  --chart-1: #2563EB;
+  --chart-2: #10B981;
+  --chart-3: #F59E0B;
+  --chart-4: #8B5CF6;
+  --chart-5: #EC4899;
+  --sidebar: #0B2447;
+  --sidebar-foreground: #FFFFFF;
+  --sidebar-primary: #38BDF8;
+  --sidebar-primary-foreground: #0B2447;
+  --sidebar-accent: #1E3A5F;
+  --sidebar-accent-foreground: #FFFFFF;
+  --sidebar-border: #ffffff1A;
+  --sidebar-ring: #38BDF8;
+
+  /* Chamber dynamic brand defaults */
+  --chamber-primary: #0B2447;
+  --chamber-accent: #1E3A5F;
+
+  /* Centralized Semantic Layout & Section Tokens (Light) */
+  --header-utility: rgba(0, 0, 0, 0.15);
+  --header-nav: #0B2447;
+  --hero: #0B2447;
+  --section-news: #F8FAFC;
+  --section-alt: #FFFFFF;
+}
+
+.dark {
+  /* ============================================================
+     CENTRAL DARK THEME PALETTE (SINGLE SOURCE OF TRUTH)
+     Modify any hex code here to update the theme across the platform!
+     ============================================================ */
+  --background: #0F1A2E;
+  --foreground: #F1F5F9;
+  --card: #172741;
+  --card-foreground: #F1F5F9;
+  --popover: #172741;
+  --popover-foreground: #F1F5F9;
+  --primary: #3B5F82;
+  --primary-foreground: #FFFFFF;
+  --secondary: #1E3352;
+  --secondary-foreground: #F1F5F9;
+  --muted: #1E3352;
+  --muted-foreground: #94A6C2;
+  --accent: #1E3352;
+  --accent-foreground: #F1F5F9;
+  --destructive: #EF4444;
+  --destructive-foreground: #FEE2E2;
+  --border: #26406A;
+  --input: #0F1E36;
+  --ring: #38BDF8;
+  --sidebar: #0A1628;
+  --sidebar-foreground: #F1F5F9;
+  --sidebar-primary: #38BDF8;
+  --sidebar-primary-foreground: #0B2447;
+  --sidebar-accent: #1E3A5F;
+  --sidebar-accent-foreground: #FFFFFF;
+  --sidebar-border: #1E3352;
+  --sidebar-ring: #38BDF8;
+
+  /* Layout & Section Tokens (Dark) */
+  --header-utility: #091322;
+  --header-nav: #0A1628;
+  --hero: #0C2649;
+  --section-news: #0F1A2E;
+  --section-alt: #0A203E;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* ============================================================
+   CANONICAL DARK THEME STYLES (from Chamber AI app.html)
+============================================================ */
+html.dark body,
+body.dark,
+[data-theme="dark"] body {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(96, 165, 250, 0.10), transparent 60%),
+    radial-gradient(1000px 600px at 100% 0%, rgba(94, 234, 212, 0.06), transparent 60%),
+    linear-gradient(180deg, #0F1A2E 0%, #0B1424 100%) !important;
+  background-attachment: fixed !important;
+  color: #E6EDF7 !important;
+}
+
+html.dark ::-webkit-scrollbar-thumb,
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #2D4B7A;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover,
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #3B5F94;
+}

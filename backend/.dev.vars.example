@@ -1,0 +1,47 @@
+# =============================================================================
+# 121Meet Backend — Local Development Secrets
+# Copy this file to `.dev.vars` and fill in real values.
+# .dev.vars is git-ignored. NEVER commit real credentials.
+#
+# Wrangler automatically reads .dev.vars when running `wrangler dev`.
+# =============================================================================
+
+# ── Non-Secret Overrides (optional) ─────────────────────────────────────────
+ENVIRONMENT=development
+PLATFORM_DOMAIN=121meet.com
+
+# ── Email Delivery (SendGrid) ────────────────────────────────────────────────
+# Get from: https://app.sendgrid.com/settings/api_keys
+SENDGRID_API_KEY=SG.replace_with_your_sendgrid_api_key
+
+# ── SMS Delivery (Twilio) ────────────────────────────────────────────────────
+# Get from: https://console.twilio.com/
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=replace_with_your_twilio_auth_token
+TWILIO_FROM_NUMBER=+1xxxxxxxxxx
+
+# ── Encryption ───────────────────────────────────────────────────────────────
+# Generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+CHAMBER_ENCRYPTION_KEY=replace_with_64_char_hex_string
+
+# ── Session Security ─────────────────────────────────────────────────────────
+JWT_SECRET=replace_with_long_random_secret_at_least_64_chars
+
+# ── Payment Gateways (platform-level defaults) ───────────────────────────────
+# Get from: https://dashboard.stripe.com/apikeys
+STRIPE_SECRET_KEY=sk_test_replace_with_your_stripe_secret_key
+STRIPE_WEBHOOK_SECRET=whsec_replace_with_your_webhook_secret
+
+# Get from: https://dashboard.razorpay.com/app/keys
+RAZORPAY_KEY_ID=rzp_test_replace
+RAZORPAY_KEY_SECRET=replace_with_your_razorpay_secret
+
+# ── AI / LLM Providers ───────────────────────────────────────────────────────
+# Get from: https://platform.openai.com/api-keys
+OPENAI_API_KEY=sk-replace_with_your_openai_key
+
+# Get from: https://console.anthropic.com/
+ANTHROPIC_API_KEY=sk-ant-replace_with_your_anthropic_key
+
+# Get from: https://aistudio.google.com/app/apikey
+GOOGLE_AI_API_KEY=AIza_replace_with_your_google_ai_key
