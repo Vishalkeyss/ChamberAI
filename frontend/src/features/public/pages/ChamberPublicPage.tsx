@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Sun,
   Moon,
@@ -53,10 +53,44 @@ export const ChamberPublicPage: React.FC<ChamberPublicPageProps> = ({
   onBackToDirectory,
   onLoginSuccess,
 }) => {
-  const [activeTab, setActiveTab] = useState('home');
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const p = window.location.pathname.replace(/^\//, '').replace(/\/$/, '').toLowerCase();
+      if (['directory', 'about', 'plans', 'events', 'news', 'blog', 'grader', 'store', 'careers', 'contact'].includes(p)) {
+        return p;
+      }
+      if (p === 'membership') return 'plans';
+    }
+    return 'home';
+  });
   const [language, setLanguage] = useState<'en' | 'es'>('en');
   const [isMemberLoginModalOpen, setIsMemberLoginModalOpen] = useState(false);
   const { theme, setTheme } = useTheme();
+
+  const handleTabSelect = (tabId: string) => {
+    setActiveTab(tabId);
+    if (typeof window !== 'undefined') {
+      const targetPath = tabId === 'home' ? '/' : `/${tabId}`;
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState({}, '', targetPath);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const p = window.location.pathname.replace(/^\//, '').replace(/\/$/, '').toLowerCase();
+      if (['directory', 'about', 'plans', 'events', 'news', 'blog', 'grader', 'store', 'careers', 'contact'].includes(p)) {
+        setActiveTab(p);
+      } else if (p === 'membership') {
+        setActiveTab('plans');
+      } else if (!p) {
+        setActiveTab('home');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // City display for headline:
   const city = (() => {
@@ -246,7 +280,7 @@ export const ChamberPublicPage: React.FC<ChamberPublicPageProps> = ({
                 <button
                   key={n.id}
                   type="button"
-                  onClick={() => setActiveTab(n.id)}
+                  onClick={() => handleTabSelect(n.id)}
                   className={cn(
                     "rounded-md font-medium shrink-0 cursor-pointer px-3.5 py-1.5 text-sm whitespace-nowrap transition-colors",
                     active
@@ -282,7 +316,7 @@ export const ChamberPublicPage: React.FC<ChamberPublicPageProps> = ({
 
             <button
               type="button"
-              onClick={() => setActiveTab('plans')}
+              onClick={() => handleTabSelect('plans')}
               className="px-4 py-2 rounded-lg text-sm font-semibold inline-flex items-center gap-2 transition hover:opacity-90 active:scale-[0.98] cursor-pointer bg-blue-600 hover:bg-blue-500 text-white shadow-xs"
             >
               Join Now
@@ -327,7 +361,7 @@ export const ChamberPublicPage: React.FC<ChamberPublicPageProps> = ({
               <div className="flex items-center gap-3 mt-8 justify-center">
                 <button
                   type="button"
-                  onClick={() => setActiveTab('plans')}
+                  onClick={() => handleTabSelect('plans')}
                   className="px-4 py-2 rounded-lg text-sm font-semibold inline-flex items-center gap-2 transition hover:opacity-90 active:scale-[0.98] cursor-pointer bg-white text-slate-900 border border-slate-200 shadow-sm hover:bg-slate-50"
                 >
                   <span>Become a Member</span>

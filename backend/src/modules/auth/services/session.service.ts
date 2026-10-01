@@ -175,6 +175,24 @@ export class SessionService {
       };
     }
 
+    // Local development full_admin fallback
+    if (token === 'dev_admin_token' && c.env.ENVIRONMENT !== 'production') {
+      return {
+        userId: 'usr_admin000000001',
+        chamberId: 'cham_test0000000001',
+        email: 'admin@metrodev.com',
+        firstName: 'Marcus',
+        lastName: 'Vance',
+        avatarUrl: null,
+        highestRole: 'full_admin',
+        roles: [{ roleId: 'full_admin', scopeType: 'chamber', scopeId: 'cham_test0000000001' }],
+        pointsBalance: 0,
+        chamber: { id: 'cham_test0000000001', name: 'Metro Dev Chamber of Commerce' },
+        createdAt: '2026-01-01T00:00:00Z',
+        lastActiveAt: new Date().toISOString(),
+      };
+    }
+
     if (!c.env.KV) {
       return null;
     }

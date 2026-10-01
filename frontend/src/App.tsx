@@ -32,6 +32,9 @@ import { ApplicationWizardPage } from './features/membership/pages/ApplicationWi
 import { TrackApplicationPage } from './features/membership/pages/TrackApplicationPage';
 import { TrackApplicationModal } from './features/membership/components/TrackApplicationModal';
 import { AdminApplicationsPage } from './features/admin/membership/pages/AdminApplicationsPage';
+import { VerifyMemberModal } from './features/member/components/VerifyMemberModal';
+import { MemberVerificationPage } from './features/member/pages/MemberVerificationPage';
+import { MemberBillingPage } from './features/billing/pages/MemberBillingPage';
 
 type ActiveShell =
   | 'public'
@@ -39,14 +42,45 @@ type ActiveShell =
   | 'admin'
   | 'chapter_admin'
   | 'super_admin'
-  | 'settings';
+  | 'settings'
+  | 'verify';
 
 function AppContent() {
-  const [activeShell, setActiveShell] = useState<ActiveShell>('public');
+  const [activeShell, setActiveShell] = useState<ActiveShell>(() => {
+    if (typeof window !== 'undefined') {
+      const p = window.location.pathname;
+      if (p.startsWith('/verify')) {
+        return 'verify';
+      }
+      if (p.startsWith('/portal') || p.startsWith('/member')) {
+        return 'member';
+      }
+      if (p.startsWith('/admin')) {
+        return 'admin';
+      }
+      if (p.startsWith('/super-admin') || p.startsWith('/super')) {
+        return 'super_admin';
+      }
+      if (p === '/settings' || p === '/portal/settings' || p === '/admin/settings') {
+        return 'settings';
+      }
+      if (p === '/apply' || p === '/join') {
+        return 'public';
+      }
+    }
+    return 'public';
+  });
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [loginModalPortal, setLoginModalPortal] = useState<'member' | 'admin' | 'super_admin'>('member');
   // First page after user login is the AI landing page; clicking "View traditional layout" switches to traditional dashboard
-  const [aiStage, setAiStage] = useState<'landing' | 'traditional'>('landing');
+  const [aiStage, setAiStage] = useState<'landing' | 'traditional'>(() => {
+    if (typeof window !== 'undefined') {
+      const p = window.location.pathname;
+      if (p === '/portal/ai' || p === '/admin/ai') return 'landing';
+      if (p.startsWith('/portal') || p.startsWith('/admin') || p.startsWith('/super')) return 'traditional';
+    }
+    return 'landing';
+  });
   const [chambers, setChambers] = useState<RegisteredChamber[]>([]);
   const [isLoadingChambers, setIsLoadingChambers] = useState(true);
 
@@ -59,6 +93,8 @@ function AppContent() {
       const p = window.location.pathname;
       if (p === '/admin/plans' || p === '/admin/plans/') return 'plans';
       if (p === '/admin/applications' || p === '/admin/applications/') return 'applications';
+      if (p === '/admin/dashboard' || p === '/admin/dashboard/') return 'dashboard';
+      if (p === '/admin/onboarding' || p === '/admin/onboarding/') return 'onboarding';
       if (p.startsWith('/admin/')) {
         const sub = p.replace(/^\/admin\//, '').replace(/\/$/, '');
         return sub || 'dashboard';
@@ -76,7 +112,15 @@ function AppContent() {
     return '/admin/onboarding';
   });
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
-  const [memberView, setMemberView] = useState<'overview' | 'plans'>('overview');
+  const [memberView, setMemberView] = useState<'overview' | 'plans' | 'billing'>(() => {
+    if (typeof window !== 'undefined') {
+      const p = window.location.pathname;
+      if (p === '/portal/billing' || p === '/billing') return 'billing';
+      if (p === '/portal/membership' || p === '/portal/wallet' || p === '/membership') return 'plans';
+      if (p.startsWith('/portal') || p.startsWith('/member')) return 'overview';
+    }
+    return 'overview';
+  });
   const [superAdminPath, setSuperAdminPath] = useState<string>('/super/chambers');
 
   // Public application wizard and tracking modal state
@@ -105,6 +149,51 @@ function AppContent() {
     }
     return undefined;
   });
+
+  // Public verified member modal state (e.g. from QR scan /verify/member/:id)
+  const [verifyMemberId, setVerifyMemberId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname;
+      if (path.startsWith('/verify/member/')) {
+        const parts = path.split('/').filter(Boolean);
+        if (parts.length >= 3) return decodeURIComponent(parts[2]);
+      }
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('verify')) {
+        return params.get('verify');
+      }
+    }
+    return null;
+  });
+  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname;
+      const params = new URLSearchParams(window.location.search);
+      return path.startsWith('/verify/member/') || Boolean(params.get('verify'));
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    const handleUrlChange = () => {
+      const path = window.location.pathname;
+      const params = new URLSearchParams(window.location.search);
+      if (path.startsWith('/verify/member/')) {
+        const parts = path.split('/').filter(Boolean);
+        if (parts.length >= 3) {
+          setVerifyMemberId(decodeURIComponent(parts[2]));
+          setActiveShell('verify');
+        }
+      } else if (params.get('verify')) {
+        setVerifyMemberId(params.get('verify'));
+        setActiveShell('verify');
+      } else if (path.startsWith('/verify')) {
+        setActiveShell('verify');
+      }
+    };
+    window.addEventListener('popstate', handleUrlChange);
+    return () => window.removeEventListener('popstate', handleUrlChange);
+  }, []);
 
   // Load registered chambers dynamically from the D1 database
   useEffect(() => {
@@ -231,6 +320,26 @@ function AppContent() {
         setLoginModalPortal('member');
         setIsLoginModalOpen(true);
         window.history.replaceState({}, '', '/');
+      } else if (pathname.startsWith('/portal') || pathname.startsWith('/member')) {
+        if (['member', 'full_admin', 'billing_admin', 'group_admin', 'chapter_admin', 'super_admin'].includes(highestRole || '')) {
+          setActiveShell('member');
+          if (pathname === '/portal/ai') {
+            setAiStage('landing');
+          } else {
+            setAiStage('traditional');
+            if (pathname === '/portal/billing' || pathname === '/billing') {
+              setMemberView('billing');
+            } else if (pathname === '/portal/membership' || pathname === '/portal/wallet' || pathname === '/membership') {
+              setMemberView('plans');
+            } else {
+              setMemberView('overview');
+            }
+          }
+        }
+      } else if (pathname === '/settings' || pathname === '/portal/settings' || pathname === '/admin/settings') {
+        if (highestRole) {
+          setActiveShell('settings');
+        }
       } else if (pathname === '/apply' || pathname === '/join') {
         setActiveShell('public');
         setPublicView('apply');
@@ -252,18 +361,35 @@ function AppContent() {
       const pathname = window.location.pathname;
       if (pathname.startsWith('/admin')) {
         setActiveShell('admin');
+        setAiStage('traditional');
         if (pathname.startsWith('/admin/')) {
           const sub = pathname.replace(/^\/admin\//, '').replace(/\/$/, '');
           if (sub === 'plans') setAdminView('plans');
           else if (sub === 'applications') setAdminView('applications');
           else if (sub === 'dashboard') setAdminView('dashboard');
+          else if (sub === 'onboarding') setAdminView('onboarding');
           else if (sub) setAdminView(sub);
           setAdminPath(pathname);
         }
-      } else if (pathname.startsWith('/super-admin')) {
+      } else if (pathname.startsWith('/super-admin') || pathname.startsWith('/super')) {
         setActiveShell('super_admin');
-      } else if (pathname.startsWith('/member')) {
+        setAiStage('traditional');
+      } else if (pathname.startsWith('/member') || pathname.startsWith('/portal')) {
         setActiveShell('member');
+        if (pathname === '/portal/ai') {
+          setAiStage('landing');
+        } else {
+          setAiStage('traditional');
+          if (pathname === '/portal/billing' || pathname === '/billing') {
+            setMemberView('billing');
+          } else if (pathname === '/portal/membership' || pathname === '/portal/wallet' || pathname === '/membership') {
+            setMemberView('plans');
+          } else {
+            setMemberView('overview');
+          }
+        }
+      } else if (pathname === '/settings' || pathname === '/portal/settings' || pathname === '/admin/settings') {
+        setActiveShell('settings');
       } else if (pathname === '/apply' || pathname === '/join') {
         setActiveShell('public');
         setPublicView('apply');
@@ -276,14 +402,13 @@ function AppContent() {
           setTrackCode(parts[1].toUpperCase());
         }
       } else if (pathname === '/' || pathname === '') {
-        if (activeShell === 'public') {
-          setPublicView('home');
-        }
+        setActiveShell('public');
+        setPublicView('home');
       }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [activeShell]);
+  }, []);
 
   // Dynamic tenant chamber resolution with zero hardcoding:
   // 1. If super_admin, platform scope "121 Meet.AI"
@@ -321,13 +446,32 @@ function AppContent() {
     '';
 
   const navigateRoleDashboard = () => {
-    setAiStage('landing');
     if (highestRole === 'super_admin') {
       setActiveShell('super_admin');
+      setAiStage('traditional');
+      if (typeof window !== 'undefined') {
+        window.history.pushState({}, '', '/super-admin');
+      }
     } else if (['full_admin', 'billing_admin', 'group_admin', 'chapter_admin'].includes(highestRole || '')) {
       setActiveShell('admin');
+      setAiStage('traditional');
+      const isNotOnboarded =
+        selectedChamber?.onboarded === 0 ||
+        selectedChamber?.onboarded === false ||
+        selectedChamber?.status === 'pending_setup';
+      const target = isNotOnboarded ? '/admin/onboarding' : (adminPath && adminPath !== '/admin/onboarding' ? adminPath : '/admin/dashboard');
+      setAdminPath(target);
+      setAdminView(target === '/admin/onboarding' ? 'onboarding' : 'dashboard');
+      if (typeof window !== 'undefined') {
+        window.history.pushState({}, '', target);
+      }
     } else {
       setActiveShell('member');
+      setAiStage('traditional');
+      setMemberView('overview');
+      if (typeof window !== 'undefined') {
+        window.history.pushState({}, '', '/portal/overview');
+      }
     }
   };
 
@@ -398,6 +542,9 @@ function AppContent() {
     if (role === 'super_admin') {
       setActiveShell('super_admin');
       setAiStage('traditional');
+      if (typeof window !== 'undefined') {
+        window.history.pushState({}, '', '/super-admin');
+      }
     } else if (['full_admin', 'billing_admin', 'group_admin', 'chapter_admin'].includes(role || '')) {
       setActiveShell('admin');
       setAiStage('traditional');
@@ -408,16 +555,19 @@ function AppContent() {
         selectedChamber?.status === 'pending_setup' ||
         authData?.user?.onboardingComplete === 0;
 
-      if (isNotOnboarded) {
-        setAdminPath('/admin/onboarding');
-        setAdminView('onboarding');
-      } else {
-        setAdminPath('/admin/dashboard');
-        setAdminView('dashboard');
+      const target = isNotOnboarded ? '/admin/onboarding' : '/admin/dashboard';
+      setAdminPath(target);
+      setAdminView(isNotOnboarded ? 'onboarding' : 'dashboard');
+      if (typeof window !== 'undefined') {
+        window.history.pushState({}, '', target);
       }
     } else {
       setActiveShell('member');
-      setAiStage('landing');
+      setAiStage('traditional');
+      setMemberView('overview');
+      if (typeof window !== 'undefined') {
+        window.history.pushState({}, '', '/portal/overview');
+      }
     }
   };
 
@@ -441,6 +591,9 @@ function AppContent() {
     await logout();
     setAiStage('landing');
     setActiveShell('public');
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/');
+    }
   };
 
   const activeUserProp = user
@@ -452,6 +605,7 @@ function AppContent() {
         businessName: (user as any).businessName || (user as any).company || undefined,
         chapter: (user as any).chapter || (user as any).chapterName || undefined,
         chamber: authChamber?.name || resolvedChamberName,
+        plan: (user as any).plan || (user as any).tierName || undefined,
       }
     : undefined;
 
@@ -541,8 +695,18 @@ function AppContent() {
               chamberName={resolvedChamberName}
               role={highestRole || 'member'}
               user={activeUserProp}
-              onViewTraditionalLayout={() => setAiStage('traditional')}
-              onEnterPrompt={(_query) => setAiStage('traditional')}
+              onViewTraditionalLayout={() => {
+                setAiStage('traditional');
+                if (typeof window !== 'undefined') {
+                  window.history.pushState({}, '', '/portal/overview');
+                }
+              }}
+              onEnterPrompt={(_query) => {
+                setAiStage('traditional');
+                if (typeof window !== 'undefined') {
+                  window.history.pushState({}, '', '/portal/overview');
+                }
+              }}
               onLogout={handleLogout}
             />
           ) : (
@@ -550,11 +714,31 @@ function AppContent() {
               chamberName={resolvedChamberName}
               user={activeUserProp}
               onLogout={handleLogout}
-              onAccountSettings={() => setActiveShell('settings')}
-              onBackToAI={() => setAiStage('landing')}
-              currentPath={memberView === 'plans' ? '/portal/membership' : '/portal/overview'}
+              onAccountSettings={() => {
+                setActiveShell('settings');
+                if (typeof window !== 'undefined') {
+                  window.history.pushState({}, '', '/portal/settings');
+                }
+              }}
+              onBackToAI={() => {
+                setAiStage('landing');
+                if (typeof window !== 'undefined') {
+                  window.history.pushState({}, '', '/portal/ai');
+                }
+              }}
+              currentPath={
+                memberView === 'plans'
+                  ? '/portal/membership'
+                  : memberView === 'billing'
+                  ? '/portal/billing'
+                  : '/portal/overview'
+              }
               onNavigate={(path) => {
-                if (path === '/portal/membership') setMemberView('plans');
+                if (typeof window !== 'undefined') {
+                  window.history.pushState({}, '', path);
+                }
+                if (path === '/portal/membership' || path === '/portal/wallet') setMemberView('plans');
+                else if (path === '/portal/billing') setMemberView('billing');
                 else setMemberView('overview');
               }}
             >
@@ -564,15 +748,43 @@ function AppContent() {
                   chamberSlug={resolvedChamberSlug}
                   user={activeUserProp}
                   onNavigateSection={(id) => {
-                    if (id === 'overview') setMemberView('overview');
-                    if (id === 'settings') setActiveShell('settings');
+                    if (id === 'overview') {
+                      setMemberView('overview');
+                      if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/overview');
+                    }
+                    if (id === 'settings') {
+                      setActiveShell('settings');
+                      if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/settings');
+                    }
+                    if (id === 'billing') {
+                      setMemberView('billing');
+                      if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/billing');
+                    }
+                  }}
+                />
+              ) : memberView === 'billing' ? (
+                <MemberBillingPage
+                  chamberName={resolvedChamberName}
+                  onNavigateMembership={() => {
+                    setMemberView('plans');
+                    if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/membership');
                   }}
                 />
               ) : (
                 <MemberOverviewPage
                   onNavigateSection={(id) => {
-                    if (id === 'settings') setActiveShell('settings');
-                    if (id === 'membership' || id === 'plan') setMemberView('plans');
+                    if (id === 'settings') {
+                      setActiveShell('settings');
+                      if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/settings');
+                    }
+                    if (id === 'membership' || id === 'plan') {
+                      setMemberView('plans');
+                      if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/membership');
+                    }
+                    if (id === 'billing') {
+                      setMemberView('billing');
+                      if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/billing');
+                    }
                   }}
                 />
               )}
@@ -591,8 +803,18 @@ function AppContent() {
               chamberName={resolvedChamberName}
               role={highestRole || 'full_admin'}
               user={activeUserProp}
-              onViewTraditionalLayout={() => setAiStage('traditional')}
-              onEnterPrompt={(_query) => setAiStage('traditional')}
+              onViewTraditionalLayout={() => {
+                setAiStage('traditional');
+                if (typeof window !== 'undefined') {
+                  window.history.pushState({}, '', adminPath || '/admin/dashboard');
+                }
+              }}
+              onEnterPrompt={(_query) => {
+                setAiStage('traditional');
+                if (typeof window !== 'undefined') {
+                  window.history.pushState({}, '', adminPath || '/admin/dashboard');
+                }
+              }}
               onLogout={handleLogout}
             />
           ) : (
@@ -600,7 +822,12 @@ function AppContent() {
               chamberName={resolvedChamberName}
               user={activeUserProp}
               onLogout={handleLogout}
-              onAccountSettings={() => setActiveShell('settings')}
+              onAccountSettings={() => {
+                setActiveShell('settings');
+                if (typeof window !== 'undefined') {
+                  window.history.pushState({}, '', '/admin/settings');
+                }
+              }}
               currentPath={adminView.includes('plan') ? '/admin/plans' : adminPath}
               onNavigate={(path) => {
                 setAdminPath(path);
@@ -875,24 +1102,50 @@ function AppContent() {
 
       {/* 6. Settings Console — Prompt 01.4 */}
       {activeShell === 'settings' && (
-        <ProtectedRoute onRedirectToLogin={() => setActiveShell('public')}>
+        <ProtectedRoute onRedirectToLogin={() => {
+          setActiveShell('public');
+          if (typeof window !== 'undefined') window.history.replaceState({}, '', '/');
+        }}>
           <MemberLayout
             user={activeUserProp}
             onLogout={handleLogout}
-            onAccountSettings={() => setActiveShell('settings')}
+            onAccountSettings={() => {
+              setActiveShell('settings');
+              if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/settings');
+            }}
           >
             <AccountSettingsPage
               onNavigateBack={() => {
-                if (highestRole === 'super_admin') setActiveShell('super_admin');
-                else if (['full_admin', 'billing_admin', 'group_admin', 'chapter_admin'].includes(highestRole || '')) setActiveShell('admin');
-                else setActiveShell('member');
+                if (highestRole === 'super_admin') {
+                  setActiveShell('super_admin');
+                  if (typeof window !== 'undefined') window.history.pushState({}, '', '/super-admin');
+                } else if (['full_admin', 'billing_admin', 'group_admin', 'chapter_admin'].includes(highestRole || '')) {
+                  setActiveShell('admin');
+                  if (typeof window !== 'undefined') window.history.pushState({}, '', adminPath || '/admin/dashboard');
+                } else {
+                  setActiveShell('member');
+                  if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/overview');
+                }
               }}
             />
           </MemberLayout>
         </ProtectedRoute>
       )}
 
-      {/* 6. Universal Authentication Modal (Member / Chamber Admin / Super Admin) */}
+      {/* 6. Dedicated Member Verification & Event Check-In Page */}
+      {activeShell === 'verify' && (
+        <MemberVerificationPage
+          memberId={verifyMemberId}
+          onNavigateHome={() => {
+            setActiveShell('public');
+            if (typeof window !== 'undefined') {
+              window.history.pushState({}, '', '/');
+            }
+          }}
+        />
+      )}
+
+      {/* 7. Universal Authentication Modal (Member / Chamber Admin / Super Admin) */}
       <MemberLoginModal
         isOpen={isLoginModalOpen}
         onClose={() => setIsLoginModalOpen(false)}
@@ -949,6 +1202,23 @@ function AppContent() {
         }}
         initialCode={trackCode}
         chamberSlug={resolvedChamberSlug}
+      />
+
+      {/* 10. Public Member Verification Modal (triggers on QR Code scan / verify URL) */}
+      <VerifyMemberModal
+        isOpen={isVerifyModalOpen && activeShell !== 'verify'}
+        memberId={verifyMemberId}
+        onClose={() => {
+          setIsVerifyModalOpen(false);
+          setVerifyMemberId(null);
+          if (
+            typeof window !== 'undefined' &&
+            (window.location.pathname.startsWith('/verify') ||
+              window.location.search.includes('verify='))
+          ) {
+            window.history.pushState({}, '', '/');
+          }
+        }}
       />
     </div>
   );

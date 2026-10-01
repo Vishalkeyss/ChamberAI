@@ -5,6 +5,10 @@ import {
   Plus,
   Trash2,
   Loader2,
+  CheckCircle2,
+  ShieldCheck,
+  Lock,
+  ArrowRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -47,6 +51,7 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isOnboardingCompleted, setIsOnboardingCompleted] = useState<boolean>(false);
 
   // Step 1: Chamber Profile
   const [chamberNameInput, setChamberNameInput] = useState<string>(chamberName);
@@ -79,6 +84,10 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
     fetchOnboardingState()
       .then((data) => {
         if (data) {
+          if (data.is_completed) {
+            setIsOnboardingCompleted(true);
+          }
+
           if (data.profile?.org_name) {
             setChamberNameInput(data.profile.org_name);
           } else if (chamberName) {
@@ -373,6 +382,7 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
 
       await submitFinishOnboarding(payload);
       toast.success('Chamber onboarding completed successfully!');
+      setIsOnboardingCompleted(true);
       onComplete();
     } catch (err: any) {
       toast.error(err.message || 'Failed to finalize setup');
@@ -382,6 +392,105 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
   };
 
   const currentChamberName = chamberNameInput.trim() || chamberName;
+
+  if (isLoading) {
+    return (
+      <div className="w-full py-16 flex justify-center items-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-xs text-muted-foreground font-medium">Checking onboarding status...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isOnboardingCompleted) {
+    return (
+      <div className="w-full py-6 flex justify-center items-start">
+        <div className="bg-card text-card-foreground rounded-2xl border border-border shadow-xs p-8 max-w-3xl w-full mx-auto space-y-6">
+          {/* Header Badge */}
+          <div className="text-center space-y-3">
+            <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mx-auto flex items-center justify-center border border-emerald-500/20 shadow-xs">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 mb-2">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Onboarding Completed &amp; Active</span>
+              </div>
+              <h1 className="text-2xl font-bold tracking-tight text-card-foreground">
+                Chamber Onboarding Completed
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+                Initial chamber setup is finished. The chamber profile, branding, payments, and membership plans are activated.
+              </p>
+            </div>
+          </div>
+
+          {/* Locked Notice */}
+          <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-900 dark:text-amber-200">
+            <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-amber-900 dark:text-amber-100">Onboarding Wizard is Locked</p>
+              <p className="mt-0.5 text-amber-800/90 dark:text-amber-300/90">
+                You cannot re-run the initial onboarding wizard once completed. To modify your chamber name, brand colors, payment integrations, or plans, navigate to the dedicated admin sections below.
+              </p>
+            </div>
+          </div>
+
+          {/* Configuration Summary */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="p-4 rounded-xl bg-muted/40 border border-border">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Chamber</p>
+              <p className="text-sm font-bold text-foreground mt-1 truncate">{currentChamberName}</p>
+              <p className="text-xs text-muted-foreground">{city || 'Primary Region'}</p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-muted/40 border border-border">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Brand Palette</p>
+              <div className="flex items-center gap-2 mt-1.5">
+                <span
+                  className="w-5 h-5 rounded-full border border-black/10 shadow-xs shrink-0"
+                  style={{ backgroundColor: primaryColor }}
+                />
+                <span className="text-xs font-mono font-medium text-foreground">{primaryColor}</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1">Theme applied</p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-muted/40 border border-border">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Plans Configured</p>
+              <p className="text-sm font-bold text-foreground mt-1">
+                {plans.filter((p) => p.selected).length} Active {plans.filter((p) => p.selected).length === 1 ? 'Tier' : 'Tiers'}
+              </p>
+              <p className="text-xs text-muted-foreground">Live for public signups</p>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={onComplete}
+              className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Go to Admin Dashboard</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+            {onExit && (
+              <button
+                type="button"
+                onClick={onExit}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-border bg-card text-foreground font-semibold text-sm hover:bg-muted transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full py-6 flex justify-center items-start">

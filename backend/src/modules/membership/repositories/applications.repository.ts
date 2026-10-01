@@ -405,8 +405,8 @@ export class ApplicationsRepository {
               .prepare(
                 `INSERT INTO users (
                   id, chamber_id, member_verification_token, email, phone, name,
-                  highest_role, status, onboarding_complete, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 'member', 'active', 1, ?, ?)`
+                  highest_role, status, preferred_theme, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'member', 'active', 'light', ?, ?)`
               )
               .bind(
                 userId,

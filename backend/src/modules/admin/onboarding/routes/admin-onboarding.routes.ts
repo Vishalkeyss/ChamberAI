@@ -108,6 +108,20 @@ adminOnboardingRoutes.post('/admin/onboarding/finish', async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const now = new Date().toISOString();
 
+  // Guard: Chamber onboarding can only be completed once
+  const existingChamber = await c.env.DB
+    .prepare('SELECT onboarded FROM platform_chambers WHERE id = ?')
+    .bind(chamberId)
+    .first<any>();
+
+  if (existingChamber?.onboarded === 1) {
+    throw new AppError(
+      ErrorCodes.BAD_REQUEST,
+      'Chamber onboarding has already been completed. Further updates must be managed via Admin Settings and Plan Builder.',
+      400
+    );
+  }
+
   const profile = body.profile || {};
   const branding = body.branding || {};
   const gateway = body.payment_gateway;
@@ -130,19 +144,6 @@ adminOnboardingRoutes.post('/admin/onboarding/finish', async (c) => {
       .bind(profile.org_name || null, profile.city || null, now, chamberId)
   );
 
-  // 2. Mark admin user onboarding complete
-  if (user?.id) {
-    statements.push(
-      c.env.DB
-        .prepare(
-          `UPDATE users
-           SET onboarding_complete = 1,
-               updated_at = ?
-           WHERE id = ?`
-        )
-        .bind(now, user.id)
-    );
-  }
 
   // 3. Upsert chamber settings
   const settingsId = generatePrefixedId('cset');

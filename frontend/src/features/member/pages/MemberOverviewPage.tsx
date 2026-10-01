@@ -9,15 +9,11 @@ import {
   Handshake,
   QrCode,
   Calendar,
-  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { MemberKpiCard } from '../components/MemberKpiCard';
-import { OnboardingChecklistCard } from '../components/OnboardingChecklistCard';
-import type { OnboardingSteps } from '../components/OnboardingChecklistCard';
 import {
   fetchMemberOverview,
-  completeOnboardingStep,
   type MemberOverviewData,
 } from '../services/member-overview.api';
 
@@ -33,7 +29,6 @@ export const MemberOverviewPage: React.FC<MemberOverviewPageProps> = ({
   const [overview, setOverview] = useState<MemberOverviewData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const loadOverview = useCallback(async () => {
     try {
@@ -52,43 +47,6 @@ export const MemberOverviewPage: React.FC<MemberOverviewPageProps> = ({
   useEffect(() => {
     loadOverview();
   }, [loadOverview]);
-
-  const handleCompleteStep = async (stepKey: keyof OnboardingSteps) => {
-    if (isSubmitting) return;
-    setIsSubmitting(true);
-    try {
-      const result = await completeOnboardingStep(stepKey);
-      // Optimistic update
-      setOverview((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          onboarding: {
-            ...prev.onboarding,
-            steps: { ...prev.onboarding.steps, [stepKey]: true },
-            completionPct: result.completionPct,
-            isComplete: result.isComplete,
-          },
-          // If completion just happened, add 100 points
-          kpis: result.isComplete && !prev.onboarding.isComplete
-            ? { ...prev.kpis, pointsBalance: prev.kpis.pointsBalance + 100 }
-            : prev.kpis,
-        };
-      });
-
-      if (result.isComplete) {
-        toast.success('🎉 Onboarding Completed! +100 Loyalty Points Credited.', {
-          duration: 5000,
-        });
-      } else {
-        toast.success(`Step "${stepKey}" completed! ${result.completionPct}% done.`);
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to complete step');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   // Compute renewal badge
   const renewalBadge = overview?.membership.renewalDate
@@ -116,29 +74,6 @@ export const MemberOverviewPage: React.FC<MemberOverviewPageProps> = ({
               <div className="w-20 h-4 bg-muted rounded" />
             </div>
           ))}
-        </div>
-        {/* Skeleton Checklist */}
-        <div className="bg-card rounded-2xl border border-border p-6 shadow-xs animate-pulse">
-          <div className="flex items-center gap-4 mb-5">
-            <div className="w-14 h-14 rounded-full bg-muted" />
-            <div className="flex-1 space-y-2">
-              <div className="w-40 h-5 bg-muted rounded" />
-              <div className="w-64 h-3 bg-muted rounded" />
-              <div className="w-full h-1.5 bg-muted rounded-full" />
-            </div>
-          </div>
-          <div className="space-y-2">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="flex items-center gap-3 p-3">
-                <div className="w-5 h-5 rounded-full bg-muted" />
-                <div className="w-8 h-8 rounded-lg bg-muted" />
-                <div className="flex-1 space-y-1">
-                  <div className="w-48 h-4 bg-muted rounded" />
-                  <div className="w-32 h-3 bg-muted rounded" />
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
     );
@@ -205,16 +140,7 @@ export const MemberOverviewPage: React.FC<MemberOverviewPageProps> = ({
         />
       </div>
 
-      {/* 2. Interactive Onboarding Checklist */}
-      <OnboardingChecklistCard
-        steps={overview.onboarding.steps}
-        completionPct={overview.onboarding.completionPct}
-        isComplete={overview.onboarding.isComplete}
-        onCompleteStep={handleCompleteStep}
-        isSubmitting={isSubmitting}
-      />
-
-      {/* 3. Recent Activity Section */}
+      {/* 2. Recent Activity Section */}
       <div className="bg-card text-card-foreground rounded-2xl border border-border p-6 shadow-xs transition-all duration-200">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -279,7 +205,7 @@ export const MemberOverviewPage: React.FC<MemberOverviewPageProps> = ({
         </div>
       </div>
 
-      {/* 4. Floating Cart Pill Button */}
+      {/* 3. Floating Cart Pill Button */}
       <button
         type="button"
         onClick={() => {

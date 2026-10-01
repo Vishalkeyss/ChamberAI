@@ -96,9 +96,9 @@ export class SuperChambersService {
           .prepare(
             `INSERT INTO users (
               id, chamber_id, member_verification_token, email, name, highest_role, status,
-              profile_completion_pct, onboarding_complete, preferred_language, preferred_theme,
+              profile_completion_pct, preferred_language, preferred_theme,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, 'full_admin', 'active', 60, 0, 'en', 'system', ?, ?)`
+            ) VALUES (?, ?, ?, ?, ?, 'full_admin', 'active', 60, 'en', 'light', ?, ?)`
           )
           .bind(
             adminUserId,

@@ -19,6 +19,7 @@ import { adminApplicationsRoutes } from './modules/membership/routes/admin-appli
 import { superChambersRoutes } from './modules/super-admin/routes/super-chambers.routes';
 import { adminOnboardingRoutes } from './modules/admin/onboarding/routes/admin-onboarding.routes';
 import { memberOverviewRoutes } from './modules/member/routes/overview.routes';
+import { memberBillingRoutes } from './modules/billing/routes/member-billing.routes';
 import { runMigrations, getMigrationHistory } from './core/db/migrator';
 import { successResponse } from './core/shared/response';
 
@@ -54,6 +55,7 @@ export function createApp() {
   apiV1.route('/', superChambersRoutes);
   apiV1.route('/', adminOnboardingRoutes);
   apiV1.route('/', memberOverviewRoutes);
+  apiV1.route('/', memberBillingRoutes);
 
   // 7. Migration operations route for Super Admin (Strictly protected by requireAuth + super_admin RBAC)
   apiV1.post('/super-admin/migrations/run', requireAuth, requireRole(['super_admin']), async (c) => {

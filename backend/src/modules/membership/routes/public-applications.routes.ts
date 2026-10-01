@@ -102,3 +102,63 @@ publicApplicationsRoutes.put('/public/applications/track/:code', async (c) => {
 
   return c.json(successResponse(result, { requestId }));
 });
+
+/**
+ * GET /api/v1/public/members/verify/:memberId
+ * Public verification endpoint for QR code scans
+ */
+publicApplicationsRoutes.get('/public/members/verify/:memberId', async (c) => {
+  const memberId = c.req.param('memberId');
+  if (!memberId) {
+    throw new AppError(ErrorCodes.BAD_REQUEST, 'Member ID is required', 400);
+  }
+
+  const row = await c.env.DB
+    .prepare(
+      `SELECT cm.id AS membership_id, cm.member_id_display, cm.status, cm.plan_start_date, cm.plan_end_date, cm.created_at,
+              u.id AS user_id, u.name AS member_name, u.email AS member_email, u.avatar_url,
+              bp.business_name,
+              pc.name AS chamber_name, pc.subdomain AS chamber_slug,
+              mp.name AS tier_name
+       FROM chamber_memberships cm
+       JOIN business_profiles bp ON bp.id = cm.business_id
+       JOIN business_members bm ON bm.business_id = cm.business_id AND bm.is_primary_contact = 1
+       JOIN users u ON u.id = bm.user_id
+       JOIN platform_chambers pc ON pc.id = cm.chamber_id
+       LEFT JOIN membership_plans mp ON mp.id = cm.plan_id
+       WHERE cm.member_id_display = ?
+          OR LOWER(cm.member_id_display) = LOWER(?)
+          OR cm.id = ?
+          OR u.id = ?
+       LIMIT 1`
+    )
+    .bind(memberId, memberId, memberId, memberId)
+    .first<any>();
+
+  if (!row) {
+    throw new AppError(ErrorCodes.NOT_FOUND, 'Member not found or invalid membership ID', 404);
+  }
+
+  const memberSinceYear = row.created_at || row.plan_start_date
+    ? new Date(row.created_at || row.plan_start_date).getFullYear().toString()
+    : '2026';
+
+  const data = {
+    verified: row.status === 'active',
+    memberId: row.member_id_display || row.membership_id,
+    membershipId: row.membership_id,
+    memberName: row.member_name,
+    memberEmail: row.member_email,
+    avatarUrl: row.avatar_url || null,
+    businessName: row.business_name,
+    chamberName: row.chamber_name,
+    chamberSlug: row.chamber_slug,
+    tierName: row.tier_name || 'Standard',
+    status: row.status,
+    memberSince: memberSinceYear,
+    validUntil: row.plan_end_date || 'Dec 31, 2026',
+  };
+
+  const requestId = c.get('requestId');
+  return c.json(successResponse(data, { requestId }));
+});

@@ -148,8 +148,8 @@ export class OtpService {
             c.env.DB.prepare(
               `INSERT OR IGNORE INTO users (
                 id, chamber_id, member_verification_token, email, phone, name,
-                highest_role, status, onboarding_complete, created_at, updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, 'member', 'active', 1, ?, ?)`
+                highest_role, status, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, 'member', 'active', ?, ?)`
             ).bind(
               newUserId,
               approvedApp.chamber_id,
