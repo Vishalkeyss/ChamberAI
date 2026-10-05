@@ -14,6 +14,7 @@ import {
 import { AddChamberModal } from '../components/AddChamberModal';
 import { ChamberDetailModal } from '../components/ChamberDetailModal';
 import { fetchSuperChambers, updateChamberStatus } from '../services/super-chambers.api';
+import { getChamberSetupProgress } from '../utils/setup-progress';
 import type { PlatformChamber } from '../types';
 
 // Canonical fallback rows matching reference UI screenshot (used if D1 empty)
@@ -177,25 +178,6 @@ export const SuperChambersPage: React.FC = () => {
     }).format(val);
   };
 
-  const getSetupBadge = (chamber: PlatformChamber) => {
-    let pct = 57;
-    let dotColor = 'bg-amber-500';
-
-    if (chamber.onboarded) {
-      pct = 100;
-      dotColor = 'bg-emerald-500';
-    } else if (chamber.membersCount > 400) {
-      pct = 71;
-      dotColor = 'bg-amber-500';
-    }
-
-    return (
-      <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-        <span className={`h-2 w-2 rounded-full ${dotColor}`} />
-        <span>{pct}%</span>
-      </div>
-    );
-  };
 
   return (
     <div className="space-y-6">
@@ -230,7 +212,7 @@ export const SuperChambersPage: React.FC = () => {
               <tr className="border-b border-border text-sm font-semibold text-muted-foreground bg-muted/30">
                 <th className="py-4 px-6">Chamber</th>
                 <th className="py-4 px-6">Domain</th>
-                <th className="py-4 px-6">Admin Contact</th>
+                <th className="py-4 px-6">Admin Name</th>
                 <th className="py-4 px-6">Members</th>
                 <th className="py-4 px-6">Revenue</th>
                 <th className="py-4 px-6">Setup</th>
@@ -260,16 +242,11 @@ export const SuperChambersPage: React.FC = () => {
                   const isSuspended = chamber.status === 'suspended';
                   const isPending = chamber.status === 'pending_setup';
 
-                  // Calculate setup progress matching reference screenshot
-                  let setupPct = 57;
-                  let setupDotColor = 'bg-amber-500';
-                  if (chamber.onboarded || chamber.name.includes('Austin')) {
-                    setupPct = 100;
-                    setupDotColor = 'bg-emerald-500';
-                  } else if (chamber.membersCount > 400 || chamber.name.includes('Denver') || chamber.name.includes('Portland')) {
-                    setupPct = 71;
-                    setupDotColor = 'bg-amber-500';
-                  }
+                  // Calculate setup progress dynamically from real D1 data
+                  const setupProgress = getChamberSetupProgress(chamber);
+                  const setupPct = setupProgress.percent;
+                  const setupDotColor =
+                    setupPct >= 80 ? 'bg-emerald-500' : setupPct >= 40 ? 'bg-amber-500' : 'bg-rose-500';
 
                   const displayDomain = chamber.customDomain || `${chamber.subdomain}.chamber1to1meet.ai`;
                   const domainSubtitle = chamber.customDomain
@@ -306,7 +283,7 @@ export const SuperChambersPage: React.FC = () => {
                         )}
                       </td>
 
-                      {/* Admin Contact */}
+                      {/* Admin Name */}
                       <td className="py-5 px-6 text-sm text-muted-foreground">
                         {chamber.adminContactName || 'Alexander Morgan'}
                       </td>

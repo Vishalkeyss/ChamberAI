@@ -84,4 +84,38 @@ describe('OTP Request & Verification Route Validation', () => {
     assert.equal(body.success, false);
     assert.equal(body.error.code, 'VALIDATION_ERROR');
   });
+
+  it('rejects invalid phone number with too few digits on OTP request with 400 validation error', async () => {
+    const res = await app.request(
+      '/api/v1/auth/otp/request',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: '12345', portal: 'member' }),
+      },
+      mockEnv
+    );
+
+    assert.equal(res.status, 400);
+    const body = (await res.json()) as any;
+    assert.equal(body.success, false);
+    assert.equal(body.error.code, 'VALIDATION_ERROR');
+  });
+
+  it('rejects invalid phone number containing illegal letters on OTP request with 400 validation error', async () => {
+    const res = await app.request(
+      '/api/v1/auth/otp/request',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: '555-CALL-NOW', portal: 'member' }),
+      },
+      mockEnv
+    );
+
+    assert.equal(res.status, 400);
+    const body = (await res.json()) as any;
+    assert.equal(body.success, false);
+    assert.equal(body.error.code, 'VALIDATION_ERROR');
+  });
 });

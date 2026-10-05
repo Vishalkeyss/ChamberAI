@@ -95,6 +95,44 @@ export const MemberMembershipPage: React.FC<MemberMembershipPageProps> = ({
     plans.find((p) => p.name.toLowerCase() === (currentPlanName || '').toLowerCase());
   const planFeatures = currentPlan?.features || [];
 
+  // Recursively resolve any inherited perks (e.g. "Everything in Silver" -> Silver's perks)
+  const displayFeatures = React.useMemo(() => {
+    if (!currentPlan?.features) return [];
+    const resolved: string[] = [];
+    const seen = new Set<string>();
+
+    for (const f of currentPlan.features) {
+      const match = f.match(
+        /^(?:everything\s+in|all\s+(?:features\s+)?(?:of|in)|includes?\s+(?:all\s+)?(?:of|in)?)\s+(.+)$/i
+      );
+      if (match) {
+        const refName = match[1].trim().toLowerCase();
+        const refPlan = plans.find(
+          (p) =>
+            p.name.toLowerCase() === refName ||
+            p.name.toLowerCase().startsWith(refName) ||
+            refName.startsWith(p.name.toLowerCase())
+        );
+        if (refPlan?.features) {
+          for (const rf of refPlan.features) {
+            const norm = rf.toLowerCase();
+            if (!seen.has(norm)) {
+              seen.add(norm);
+              resolved.push(rf);
+            }
+          }
+        }
+      } else {
+        const norm = f.toLowerCase();
+        if (!seen.has(norm)) {
+          seen.add(norm);
+          resolved.push(f);
+        }
+      }
+    }
+    return resolved;
+  }, [currentPlan, plans]);
+
   const [membershipStatus, setMembershipStatus] = useState<string>('Active');
   const [expiryDate, setExpiryDate] = useState<string>('Dec 31, 2026');
   const [memberSince, setMemberSince] = useState<string>(new Date().getFullYear().toString());
@@ -379,12 +417,18 @@ export const MemberMembershipPage: React.FC<MemberMembershipPageProps> = ({
       setCurrentPlanPrice(res.newPlanPrice ?? upgradeTargetPlan.price);
       setIsUpgradeModalOpen(false);
 
-      // Re-fetch benefits to immediately reflect new plan's limits/quotas
-      fetchMemberBenefits()
-        .then((data) => {
-          if (Array.isArray(data)) setBenefits(data);
-        })
-        .catch(() => {});
+      // Re-fetch benefits to immediately reflect new plan's dynamic limits/quotas
+      setIsLoadingBenefits(true);
+      try {
+        const updatedBenefits = await fetchMemberBenefits();
+        if (Array.isArray(updatedBenefits)) {
+          setBenefits(updatedBenefits);
+        }
+      } catch (err) {
+        console.error('Failed to reload benefits:', err);
+      } finally {
+        setIsLoadingBenefits(false);
+      }
 
       const isDowngrade = (res.newPlanPrice ?? upgradeTargetPlan.price) < effectiveCurrentPrice;
       toast.success(
@@ -687,10 +731,24 @@ Authentication Hash: 0x${Math.random().toString(16).slice(2, 10).toUpperCase()}
                       >
                         <div className="flex items-start gap-3">
                           <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-950/60 flex items-center justify-center text-teal-600 dark:text-teal-400 shrink-0">
-                            {b.benefit_key.includes('ticket') ? (
+                            {b.benefit_key.includes('ticket') || b.benefit_key.includes('event') ? (
                               <CalendarDays className="w-5 h-5" />
-                            ) : b.benefit_key.includes('ad') || b.benefit_key.includes('spotlight') ? (
+                            ) : b.benefit_key.includes('ad') ||
+                              b.benefit_key.includes('spotlight') ||
+                              b.benefit_key.includes('promotion') ||
+                              b.benefit_key.includes('press') ||
+                              b.benefit_key.includes('announcement') ? (
                               <Megaphone className="w-5 h-5" />
+                            ) : b.benefit_key.includes('meet') ||
+                              b.benefit_key.includes('network') ||
+                              b.benefit_key.includes('session') ? (
+                              <Handshake className="w-5 h-5" />
+                            ) : b.benefit_key.includes('badge') || b.benefit_key.includes('verified') ? (
+                              <Shield className="w-5 h-5" />
+                            ) : b.benefit_key.includes('directory') ||
+                              b.benefit_key.includes('listing') ||
+                              b.benefit_key.includes('forum') ? (
+                              <Building2 className="w-5 h-5" />
                             ) : (
                               <Award className="w-5 h-5" />
                             )}
@@ -744,13 +802,13 @@ Authentication Hash: 0x${Math.random().toString(16).slice(2, 10).toUpperCase()}
             </div>
 
             {/* Included Plan Features & Perks Section */}
-            {planFeatures.length > 0 && (
+            {displayFeatures.length > 0 && (
               <div className="mt-6">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-[#94A6C2] mb-3">
                   Included Plan Perks & Features
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                  {planFeatures.map((feat, idx) => (
+                  {displayFeatures.map((feat, idx) => (
                     <div
                       key={idx}
                       className="flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60"

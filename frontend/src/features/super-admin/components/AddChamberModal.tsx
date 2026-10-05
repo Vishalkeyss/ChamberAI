@@ -7,8 +7,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Building2, Globe, Sparkles, Plus, Loader2, AlertCircle } from 'lucide-react';
+import { Building2, Globe, Sparkles, Plus, Loader2, AlertCircle, Phone } from 'lucide-react';
 import { provisionChamber } from '../services/super-chambers.api';
+import { isValidPhoneNumber, isValidEmail, normalizePhoneNumber } from '@/lib/validation';
 
 interface AddChamberModalProps {
   isOpen: boolean;
@@ -25,6 +26,7 @@ export const AddChamberModal: React.FC<AddChamberModalProps> = ({
   const [adminName, setAdminName] = useState('');
   const [city, setCity] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
+  const [adminPhone, setAdminPhone] = useState('');
   const [slug, setSlug] = useState('');
   const [slugTouched, setSlugTouched] = useState(false);
   const [customDomain, setCustomDomain] = useState('');
@@ -47,6 +49,7 @@ export const AddChamberModal: React.FC<AddChamberModalProps> = ({
     setAdminName('');
     setCity('');
     setAdminEmail('');
+    setAdminPhone('');
     setSlug('');
     setSlugTouched(false);
     setCustomDomain('');
@@ -65,8 +68,12 @@ export const AddChamberModal: React.FC<AddChamberModalProps> = ({
       setErrorMessage('Admin contact name is required.');
       return;
     }
-    if (!adminEmail.trim() || !adminEmail.includes('@')) {
+    if (!adminEmail.trim() || !isValidEmail(adminEmail.trim())) {
       setErrorMessage('A valid admin email is required to send the invite.');
+      return;
+    }
+    if (adminPhone.trim() && !isValidPhoneNumber(adminPhone.trim())) {
+      setErrorMessage('Please enter a valid USA phone number (+1 (555) 019-2834) or leave blank.');
       return;
     }
 
@@ -79,6 +86,7 @@ export const AddChamberModal: React.FC<AddChamberModalProps> = ({
         custom_domain: customDomain.trim() ? customDomain.trim() : null,
         admin_name: adminName.trim(),
         admin_email: adminEmail.trim(),
+        admin_phone: adminPhone.trim() ? normalizePhoneNumber(adminPhone.trim()) : null,
       });
 
       resetForm();
@@ -149,7 +157,7 @@ export const AddChamberModal: React.FC<AddChamberModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-semibold text-foreground block mb-1">
-                  Admin contact*
+                  Admin name*
                 </label>
                 <input
                   type="text"
@@ -174,19 +182,33 @@ export const AddChamberModal: React.FC<AddChamberModalProps> = ({
               </div>
             </div>
 
-            {/* Admin Email */}
-            <div>
-              <label className="text-xs font-semibold text-foreground block mb-1">
-                Admin email*
-              </label>
-              <input
-                type="email"
-                value={adminEmail}
-                onChange={(e) => setAdminEmail(e.target.value)}
-                placeholder="admin@chambername.org"
-                className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary focus:border-primary transition"
-                required
-              />
+            {/* Admin Email & Admin Phone */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-foreground block mb-1">
+                  Admin email*
+                </label>
+                <input
+                  type="email"
+                  value={adminEmail}
+                  onChange={(e) => setAdminEmail(e.target.value)}
+                  placeholder="admin@chambername.org"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary focus:border-primary transition"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-foreground block mb-1">
+                  Admin phone (optional)
+                </label>
+                <input
+                  type="tel"
+                  value={adminPhone}
+                  onChange={(e) => setAdminPhone(e.target.value)}
+                  placeholder="+1 (555) 019-2834"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary focus:border-primary transition"
+                />
+              </div>
             </div>
           </div>
 

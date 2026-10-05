@@ -568,98 +568,359 @@ export class MemberBillingService {
 
     let records = existing.results || [];
 
-    // Parse features_json from membership plan
-    let planFeatures: string[] = [];
-    try {
-      planFeatures = membership.features_json ? JSON.parse(membership.features_json) : [];
-    } catch {
-      planFeatures = [];
+    // 2. Fetch all plans for this chamber to resolve any tier inheritance references (e.g. "Everything in Silver")
+    const allChamberPlans = await db
+      .prepare(`SELECT id, name, features_json FROM membership_plans WHERE chamber_id = ?`)
+      .bind(chamberId)
+      .all<{ id: string; name: string; features_json: string | null }>();
+
+    const chamberPlansMap = new Map<string, string[]>();
+    for (const p of allChamberPlans.results || []) {
+      try {
+        const feats = p.features_json ? JSON.parse(p.features_json) : [];
+        if (Array.isArray(feats)) {
+          chamberPlansMap.set(p.name.trim().toLowerCase(), feats);
+        }
+      } catch {
+        // ignore JSON parse error
+      }
     }
 
-    // If the plan has no features configured, do not seed dummy records and return empty array
-    if (!Array.isArray(planFeatures) || planFeatures.length === 0) {
+    // Parse features_json from member's current plan
+    let rawPlanFeatures: (string | any)[] = [];
+    try {
+      rawPlanFeatures = membership.features_json ? JSON.parse(membership.features_json) : [];
+    } catch {
+      rawPlanFeatures = [];
+    }
+
+    if (!Array.isArray(rawPlanFeatures) || rawPlanFeatures.length === 0) {
+      if (records.length > 0) {
+        await db
+          .prepare(
+            `DELETE FROM membership_benefit_usage
+             WHERE chamber_id = ? AND membership_id = ?`
+          )
+          .bind(chamberId, membershipId)
+          .run();
+      }
       return [];
     }
 
-    // If no records yet and plan has features, seed standard benefit items
-    if (records.length === 0) {
-      const defaultBenefits = [
-        {
-          key: 'free_event_tickets',
-          name: 'Free Event Tickets',
-          limit: 5,
-          used: 2,
-        },
-        {
-          key: 'directory_ad_placements',
-          name: 'Directory Ad Placements',
-          limit: 1,
-          used: 1,
-        },
-        {
-          key: 'press_release_submissions',
-          name: 'Press Release Submissions',
-          limit: 12,
-          used: 3,
-        },
-        {
-          key: 'vip_gala_tickets',
-          name: 'Annual Gala VIP Passes',
-          limit: 4,
-          used: 1,
-        },
-      ];
+    // 3. Resolve plan inheritance recursively (e.g. "Everything in Silver" -> expands Silver's features)
+    const allResolvedFeatures = MemberBillingService.resolveInheritedFeatures(
+      rawPlanFeatures,
+      chamberPlansMap,
+      membership.plan_name ? new Set([membership.plan_name.trim().toLowerCase()]) : new Set()
+    );
 
-      for (const b of defaultBenefits) {
+    // 4. Filter strictly for TRACKABLE / METERED benefits (e.g. tickets, sponsorships, listings, meets, announcements)
+    const trackableFeatures = allResolvedFeatures.filter((f) =>
+      MemberBillingService.isTrackableBenefit(f)
+    );
+
+    if (trackableFeatures.length === 0) {
+      if (records.length > 0) {
+        await db
+          .prepare(
+            `DELETE FROM membership_benefit_usage
+             WHERE chamber_id = ? AND membership_id = ?`
+          )
+          .bind(chamberId, membershipId)
+          .run();
+      }
+      return [];
+    }
+
+    // Derive benefit items dynamically
+    const dynamicBenefits = trackableFeatures
+      .map((f) => MemberBillingService.parseFeatureBenefit(f))
+      .filter((b) => Boolean(b.name) && b.limit > 0);
+
+    if (dynamicBenefits.length === 0) {
+      if (records.length > 0) {
+        await db
+          .prepare(
+            `DELETE FROM membership_benefit_usage
+             WHERE chamber_id = ? AND membership_id = ?`
+          )
+          .bind(chamberId, membershipId)
+          .run();
+      }
+      return [];
+    }
+
+    const currentKeys = new Set(dynamicBenefits.map((b) => b.key));
+
+    // Delete any stale benefit rows from D1 that don't belong to the current plan
+    for (const r of records) {
+      if (!currentKeys.has(r.benefit_key)) {
+        await db
+          .prepare(
+            `DELETE FROM membership_benefit_usage
+             WHERE chamber_id = ? AND membership_id = ? AND benefit_key = ?`
+          )
+          .bind(chamberId, membershipId, r.benefit_key)
+          .run();
+      }
+    }
+
+    // Ensure all current plan benefits exist in D1
+    const existingKeyMap = new Map<string, any>();
+    for (const r of records) {
+      if (currentKeys.has(r.benefit_key)) {
+        existingKeyMap.set(r.benefit_key, r);
+      }
+    }
+
+    for (const b of dynamicBenefits) {
+      if (!existingKeyMap.has(b.key)) {
         const buId = generatePrefixedId('bu');
         await db
           .prepare(
             `INSERT OR IGNORE INTO membership_benefit_usage (
               id, chamber_id, membership_id, benefit_key, period_start, period_end,
               usage_limit, used_count, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, datetime('now'), datetime('now'))`
           )
-          .bind(buId, chamberId, membershipId, b.key, cycleStart, cycleEnd, b.limit, b.used)
+          .bind(buId, chamberId, membershipId, b.key, cycleStart, cycleEnd, b.limit)
           .run();
       }
-
-      const reloaded = await db
-        .prepare(
-          `SELECT id, benefit_key, period_start, period_end, usage_limit, used_count
-           FROM membership_benefit_usage
-           WHERE chamber_id = ? AND membership_id = ?`
-        )
-        .bind(chamberId, membershipId)
-        .all<any>();
-
-      records = reloaded.results || [];
     }
 
-    // Friendly names map
-    const friendlyNames: Record<string, string> = {
-      free_event_tickets: 'Free Event Tickets',
-      directory_ad_placements: 'Directory Ad Placements',
-      press_release_submissions: 'Press Release Submissions',
-      vip_gala_tickets: 'Annual Gala VIP Passes',
-      annual_gala_tickets: 'Annual Gala VIP Tickets',
-      featured_directory_placement: 'Featured Directory Spotlight',
-    };
+    // Reload active records from D1 for this membership
+    const reloaded = await db
+      .prepare(
+        `SELECT id, benefit_key, period_start, period_end, usage_limit, used_count
+         FROM membership_benefit_usage
+         WHERE chamber_id = ? AND membership_id = ?`
+      )
+      .bind(chamberId, membershipId)
+      .all<any>();
 
-    return records.map((r: any) => {
-      const quotaLimit = typeof r.usage_limit === 'number' ? r.usage_limit : -1;
-      const usedCount = r.used_count || 0;
+    const allRecords = reloaded.results || [];
+    const recordMap = new Map<string, any>();
+    for (const r of allRecords) {
+      recordMap.set(r.benefit_key, r);
+    }
+
+    return dynamicBenefits.map((b) => {
+      const recorded = recordMap.get(b.key);
+      const quotaLimit = recorded && typeof recorded.usage_limit === 'number' ? recorded.usage_limit : b.limit;
+      const usedCount = recorded ? (recorded.used_count || 0) : 0;
       const remaining = quotaLimit === -1 ? 9999 : Math.max(0, quotaLimit - usedCount);
 
       return {
-        benefit_key: r.benefit_key,
-        benefit_name: friendlyNames[r.benefit_key] || r.benefit_key.replace(/_/g, ' '),
+        benefit_key: b.key,
+        benefit_name: b.name,
         usage_count: usedCount,
         quota_limit: quotaLimit,
         remaining,
-        cycle_start: r.period_start,
-        cycle_end: r.period_end,
+        cycle_start: cycleStart,
+        cycle_end: cycleEnd,
       };
     });
+  }
+
+  /**
+   * Recursively resolves referenced plan features (e.g. "Everything in Silver" -> expands Silver features).
+   */
+  static resolveInheritedFeatures(
+    features: string[],
+    plansMap: Map<string, string[]>,
+    visited = new Set<string>()
+  ): string[] {
+    const result: string[] = [];
+    const seen = new Set<string>();
+
+    for (const raw of features) {
+      const trimmed = String(raw || '').trim();
+      if (!trimmed) continue;
+
+      // Check if feature is an inheritance reference:
+      // "Everything in Silver", "Everything in Bronze", "All features of Silver", "Includes Silver"
+      const match = trimmed.match(
+        /^(?:everything\s+in|all\s+(?:features\s+)?(?:of|in)|includes?\s+(?:all\s+)?(?:of|in)?)\s+(.+)$/i
+      );
+
+      if (match) {
+        const refName = match[1].trim().toLowerCase();
+        let matchedKey: string | undefined;
+        for (const planName of plansMap.keys()) {
+          if (planName === refName || planName.startsWith(refName) || refName.startsWith(planName)) {
+            matchedKey = planName;
+            break;
+          }
+        }
+
+        if (matchedKey && !visited.has(matchedKey)) {
+          visited.add(matchedKey);
+          const parentFeatures = plansMap.get(matchedKey) || [];
+          const childResolved = MemberBillingService.resolveInheritedFeatures(
+            parentFeatures,
+            plansMap,
+            visited
+          );
+          for (const cf of childResolved) {
+            const norm = cf.toLowerCase();
+            if (!seen.has(norm)) {
+              seen.add(norm);
+              result.push(cf);
+            }
+          }
+        }
+      } else {
+        const norm = trimmed.toLowerCase();
+        if (!seen.has(norm)) {
+          seen.add(norm);
+          result.push(trimmed);
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Determines if a feature string represents a trackable (metered / consumable) benefit.
+   */
+  static isTrackableBenefit(rawFeature: string): boolean {
+    const raw = String(rawFeature || '').trim();
+    if (!raw) return false;
+
+    // References to other plans are NOT benefits
+    if (
+      /^(?:everything\s+in|all\s+(?:features\s+)?(?:of|in)|includes?\s+(?:all\s+)?(?:of|in)?)\s+/i.test(
+        raw
+      )
+    ) {
+      return false;
+    }
+
+    // Explicit numeric count at start, e.g. "5 Free Event Tickets", "12 Press Releases", "2 Ads"
+    if (/^\d+\s+/i.test(raw)) {
+      return true;
+    }
+
+    const lower = raw.toLowerCase();
+
+    // Check for consumable / meterable keywords
+    const trackableKeywords = [
+      'ticket',
+      'pass',
+      'sponsorship',
+      'placement',
+      'ad ',
+      'ads',
+      'advertisement',
+      'spotlight',
+      'submission',
+      'press release',
+      'networking meet',
+      'networking session',
+      'monthly meet',
+      'monthly networking',
+      'announcement',
+      'newsletter',
+      'job posting',
+      'job board',
+      'directory listing',
+    ];
+
+    for (const kw of trackableKeywords) {
+      if (lower.includes(kw)) {
+        return true;
+      }
+    }
+
+    if (
+      (lower.includes('monthly') || lower.includes('quarterly')) &&
+      !lower.includes('forum') &&
+      !lower.includes('access') &&
+      !lower.includes('dashboard')
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Parses an individual feature item from a plan's features_json into a structured Benefit item.
+   */
+  static parseFeatureBenefit(featureItem: string | any): {
+    key: string;
+    name: string;
+    limit: number;
+  } {
+    if (typeof featureItem === 'object' && featureItem !== null) {
+      const name = featureItem.name || featureItem.title || featureItem.feature || 'Plan Benefit';
+      const key = featureItem.key || MemberBillingService.slugify(name);
+      const limit =
+        typeof featureItem.limit === 'number'
+          ? featureItem.limit
+          : typeof featureItem.quota === 'number'
+          ? featureItem.quota
+          : 1;
+      return { key, name, limit };
+    }
+
+    const raw = String(featureItem || '').trim();
+    if (!raw) return { key: 'benefit', name: 'Plan Benefit', limit: 1 };
+
+    const formatName = (str: string) => {
+      return str.replace(/\b\w/g, (c) => c.toUpperCase());
+    };
+
+    // Check if string starts with an explicit number quota, e.g. "5 Free Event Tickets", "12 Press Releases"
+    const leadingNumMatch = raw.match(/^(\d+)\s+(.+)$/);
+    if (leadingNumMatch) {
+      const limit = parseInt(leadingNumMatch[1], 10);
+      const rest = leadingNumMatch[2].trim();
+      const key = MemberBillingService.slugify(rest);
+      return { key, name: `${limit} ${formatName(rest)}`, limit };
+    }
+
+    const lower = raw.toLowerCase();
+    let limit = 1;
+
+    if (lower.includes('monthly')) {
+      limit = 12;
+    } else if (lower.includes('quarterly')) {
+      limit = 4;
+    } else if (lower.includes('bi-annual') || lower.includes('biannual') || lower.includes('semi-annual')) {
+      limit = 2;
+    } else if (
+      lower.includes('annual') ||
+      lower.includes('yearly') ||
+      lower.includes('sponsorship') ||
+      lower.includes('spotlight') ||
+      lower.includes('placement') ||
+      lower.includes('directory listing')
+    ) {
+      limit = 1;
+    } else if (lower.includes('ticket') || lower.includes('pass')) {
+      limit = 2;
+    } else if (lower.includes('job board') || lower.includes('job posting')) {
+      limit = 3;
+    } else if (lower.includes('press release') || lower.includes('submission')) {
+      limit = 12;
+    } else {
+      limit = 1;
+    }
+
+    const key = MemberBillingService.slugify(raw);
+    return { key, name: formatName(raw), limit };
+  }
+
+  static slugify(text: string): string {
+    return (
+      text
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 50) || 'benefit'
+    );
   }
 
   /**

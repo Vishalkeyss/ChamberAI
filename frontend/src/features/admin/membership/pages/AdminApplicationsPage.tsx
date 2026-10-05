@@ -22,12 +22,18 @@ import {
   Flag,
   Paperclip,
   Send,
+  CreditCard,
+  Zap,
+  ShieldCheck,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   fetchAdminApplications,
   approveApplication,
   requestChangesApplication,
   rejectApplication,
+  fetchApprovalMode,
+  updateApprovalMode,
   type AdminApplicationItem,
 } from '../services/admin-applications.api';
 import { cn } from '@/lib/utils';
@@ -58,7 +64,12 @@ export const AdminApplicationsPage: React.FC<AdminApplicationsPageProps> = ({ ch
   const [changesNotes, setChangesNotes] = useState<string>('');
   const [rejectApp, setRejectApp] = useState<AdminApplicationItem | null>(null);
   const [rejectReason, setRejectReason] = useState<string>('');
+  const [approveConfirmApp, setApproveConfirmApp] = useState<AdminApplicationItem | null>(null);
   const [isActionLoading, setIsActionLoading] = useState<boolean>(false);
+
+  // Approval mode state (manual review default vs auto-approve)
+  const [autoApprove, setAutoApprove] = useState<boolean>(false);
+  const [isTogglingMode, setIsTogglingMode] = useState<boolean>(false);
 
   // Request Changes attachments state (matching Screenshot 1)
   interface AttachedFile {
@@ -111,13 +122,37 @@ export const AdminApplicationsPage: React.FC<AdminApplicationsPageProps> = ({ ch
   const loadApplications = async () => {
     setIsLoading(true);
     try {
-      const data = await fetchAdminApplications(chamberSlug);
+      const [data, mode] = await Promise.all([
+        fetchAdminApplications(chamberSlug),
+        fetchApprovalMode(chamberSlug).catch(() => ({ autoApprove: false })),
+      ]);
       setApplications(data);
+      if (mode && typeof mode.autoApprove === 'boolean') {
+        setAutoApprove(mode.autoApprove);
+      }
     } catch (err: any) {
       console.error('Failed to load applications:', err);
       toast.error('Unable to load applications from database');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleToggleApprovalMode = async () => {
+    setIsTogglingMode(true);
+    try {
+      const nextMode = !autoApprove;
+      const res = await updateApprovalMode(nextMode, chamberSlug);
+      setAutoApprove(res.autoApprove);
+      toast.success(
+        res.autoApprove
+          ? 'Approval mode set to Auto-Approve (New applications will be instantly approved & charged)'
+          : 'Approval mode set to Manual Review (Applications require committee review before charging)'
+      );
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to update approval mode');
+    } finally {
+      setIsTogglingMode(false);
     }
   };
 
@@ -153,13 +188,20 @@ export const AdminApplicationsPage: React.FC<AdminApplicationsPageProps> = ({ ch
   const handleApprove = async (app: AdminApplicationItem) => {
     setIsActionLoading(true);
     try {
-      await approveApplication(app.id, chamberSlug);
-      toast.success(`Application approved for ${app.applicantName}`);
+      const res = await approveApplication(app.id, chamberSlug);
+      if (res.charge?.charged) {
+        toast.success(
+          `Application approved! Card ending in •••• ${res.charge.cardLastFour} charged $${res.charge.amount.toFixed(2)}.`
+        );
+      } else {
+        toast.success(res.message || `Application approved for ${app.applicantName}`);
+      }
       // Once approved, immediately remove from applications review queue
       setApplications((prev) => prev.filter((item) => item.id !== app.id));
       if (viewingApp?.id === app.id) {
         setViewingApp(null);
       }
+      setApproveConfirmApp(null);
     } catch (err: any) {
       toast.error(err?.message || 'Failed to approve application');
     } finally {
@@ -238,7 +280,7 @@ export const AdminApplicationsPage: React.FC<AdminApplicationsPageProps> = ({ ch
   const moveToStage = (app: AdminApplicationItem, stageKey: string) => {
     if (app.status === stageKey) return;
     if (stageKey === 'approved') {
-      handleApprove(app);
+      setApproveConfirmApp(app);
       return;
     }
     if (stageKey === 'rejected') {
@@ -329,7 +371,47 @@ export const AdminApplicationsPage: React.FC<AdminApplicationsPageProps> = ({ ch
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Approval Mode Toggle: Manual Review (Default) vs Auto-Approve */}
+          <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl border border-border bg-card shadow-2xs">
+            <div className="flex flex-col text-left">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
+                Approval Mode
+              </span>
+              <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <span
+                  className={cn(
+                    'w-2 h-2 rounded-full',
+                    autoApprove ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                  )}
+                />
+                {autoApprove ? 'Auto-Approve' : 'Manual Review (Default)'}
+              </span>
+            </div>
+            <button
+              type="button"
+              id="btn-toggle-approval-mode"
+              onClick={handleToggleApprovalMode}
+              disabled={isTogglingMode}
+              className={cn(
+                'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden',
+                autoApprove ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
+              )}
+              title={
+                autoApprove
+                  ? 'Currently Auto-Approve: New applications are immediately approved and charged. Click to switch to Manual Review.'
+                  : 'Currently Manual Review: Applications require committee review before charging. Click to switch to Auto-Approve.'
+              }
+            >
+              <span
+                className={cn(
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out',
+                  autoApprove ? 'translate-x-5' : 'translate-x-0'
+                )}
+              />
+            </button>
+          </div>
+
           <span className="text-xs px-3 py-1.5 rounded-full font-medium bg-secondary text-secondary-foreground border border-border">
             {liveApplications.length} total
           </span>
@@ -618,7 +700,7 @@ export const AdminApplicationsPage: React.FC<AdminApplicationsPageProps> = ({ ch
                                 <button
                                   type="button"
                                   disabled={isActionLoading}
-                                  onClick={() => handleApprove(a)}
+                                  onClick={() => setApproveConfirmApp(a)}
                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition shadow-2xs cursor-pointer disabled:opacity-50"
                                 >
                                   <CheckCircle2 size={13} />
@@ -743,6 +825,53 @@ export const AdminApplicationsPage: React.FC<AdminApplicationsPageProps> = ({ ch
                 </div>
               </div>
 
+              {/* Payment Details & Pre-Authorized Card on File */}
+              <div>
+                <h4 className="font-bold text-foreground mb-2 uppercase text-[11px] tracking-wider flex items-center gap-1.5">
+                  <CreditCard size={13} className="text-primary" />
+                  <span>Payment Details &amp; Pre-Authorized Card</span>
+                </h4>
+                <div className="p-3 bg-muted/40 rounded-xl border border-border">
+                  {viewingApp.businessDetails?.paymentMethod ? (
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-10 h-7 rounded bg-slate-900 text-white flex items-center justify-center font-bold text-[10px] uppercase tracking-wider shadow-2xs">
+                          {viewingApp.businessDetails.paymentMethod.brand || 'CARD'}
+                        </div>
+                        <div>
+                          <span className="font-semibold text-foreground text-xs block font-mono">
+                            •••• {viewingApp.businessDetails.paymentMethod.lastFour}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">
+                            Expires {String(viewingApp.businessDetails.paymentMethod.expiryMonth).padStart(2, '0')}/{viewingApp.businessDetails.paymentMethod.expiryYear} · {viewingApp.businessDetails.paymentMethod.cardholderName}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-left sm:text-right">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                          <ShieldCheck size={11} />
+                          <span>Pre-Authorized</span>
+                        </span>
+                        <span className="text-[10px] text-muted-foreground block mt-0.5">
+                          {viewingApp.planPrice > 0
+                            ? `Will charge $${viewingApp.planPrice.toLocaleString('en-US')}/yr upon approval`
+                            : 'Complimentary Tier ($0.00)'}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between text-muted-foreground text-xs">
+                      <span>No pre-authorized card on file</span>
+                      <span className="text-[11px]">
+                        {viewingApp.planPrice > 0
+                          ? 'Invoice will be issued upon approval'
+                          : 'Complimentary Plan ($0)'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Reviewer Notes if changes requested or rejected */}
               {viewingApp.adminNotes && (
                 <div className="p-3 bg-amber-500/15 border border-amber-500/30 rounded-xl">
@@ -760,8 +889,9 @@ export const AdminApplicationsPage: React.FC<AdminApplicationsPageProps> = ({ ch
                   <button
                     type="button"
                     onClick={() => {
-                      handleApprove(viewingApp);
+                      const a = viewingApp;
                       setViewingApp(null);
+                      setApproveConfirmApp(a);
                     }}
                     className="px-4 py-2 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
                   >
@@ -935,6 +1065,93 @@ export const AdminApplicationsPage: React.FC<AdminApplicationsPageProps> = ({ ch
                   <Send size={15} />
                 )}
                 <span>Send Request</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2.5 Approve Application & Charge Card Confirmation Modal */}
+      {approveConfirmApp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-card rounded-2xl shadow-2xl border border-border overflow-hidden text-foreground p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                <CheckCircle2 size={22} />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-foreground">
+                  Approve Membership Application
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Confirm member onboarding for <strong className="text-foreground">{approveConfirmApp.applicantName}</strong> ({approveConfirmApp.businessName})
+                </p>
+              </div>
+            </div>
+
+            {/* Plan & Charge Details */}
+            <div className="p-3.5 rounded-xl bg-muted/40 border border-border space-y-2 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Membership Plan:</span>
+                <span className="font-semibold text-foreground">{approveConfirmApp.planName}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Plan Dues Amount:</span>
+                <span className="font-bold text-foreground">
+                  {approveConfirmApp.planPrice > 0
+                    ? `$${approveConfirmApp.planPrice.toLocaleString('en-US')}/yr`
+                    : 'Complimentary ($0.00)'}
+                </span>
+              </div>
+              {approveConfirmApp.businessDetails?.paymentMethod ? (
+                <div className="pt-2 border-t border-border flex items-center justify-between">
+                  <span className="text-muted-foreground flex items-center gap-1.5">
+                    <CreditCard size={13} className="text-primary" />
+                    <span>Card to Charge:</span>
+                  </span>
+                  <span className="font-mono font-semibold text-foreground">
+                    •••• {approveConfirmApp.businessDetails.paymentMethod.lastFour} ({approveConfirmApp.businessDetails.paymentMethod.brand?.toUpperCase() || 'CARD'})
+                  </span>
+                </div>
+              ) : (
+                <div className="pt-2 border-t border-border flex items-center justify-between text-muted-foreground">
+                  <span>Payment Method:</span>
+                  <span>No card on file (Invoice will be issued)</span>
+                </div>
+              )}
+            </div>
+
+            {approveConfirmApp.planPrice > 0 && approveConfirmApp.businessDetails?.paymentMethod && (
+              <div className="p-3 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
+                <Zap size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                <p className="text-[11px] leading-relaxed">
+                  Approving will instantly activate their membership, vault their card, charge{' '}
+                  <strong>${approveConfirmApp.planPrice.toLocaleString('en-US')}.00</strong>, and mark the invoice paid.
+                </p>
+              </div>
+            )}
+
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setApproveConfirmApp(null)}
+                className="px-4 py-2 rounded-xl text-xs font-medium border border-border bg-card text-foreground hover:bg-muted cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-approve-charge"
+                disabled={isActionLoading}
+                onClick={() => handleApprove(approveConfirmApp)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5 shadow-xs"
+              >
+                {isActionLoading && <Loader2 size={13} className="animate-spin" />}
+                <span>
+                  {approveConfirmApp.planPrice > 0 && approveConfirmApp.businessDetails?.paymentMethod
+                    ? `Approve & Charge $${approveConfirmApp.planPrice}`
+                    : 'Approve Application'}
+                </span>
               </button>
             </div>
           </div>

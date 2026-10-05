@@ -3,6 +3,19 @@ import { z } from 'zod';
 export type ChamberLifecycleStatus = 'active' | 'suspended' | 'pending_setup';
 export type DomainVerificationStatus = 'verified' | 'pending_dns' | 'none';
 
+export interface ChamberSetupStep {
+  key: string;
+  label: string;
+  done: boolean;
+}
+
+export interface ChamberSetupProgress {
+  percent: number;
+  completedSteps: number;
+  totalSteps: number;
+  steps: ChamberSetupStep[];
+}
+
 export interface PlatformChamberDTO {
   id: string;
   name: string;
@@ -19,6 +32,7 @@ export interface PlatformChamberDTO {
   revenueTotal: number;
   createdAt: string;
   updatedAt: string | null;
+  setupProgress?: ChamberSetupProgress;
 }
 
 export const ProvisionChamberSchema = z.object({
@@ -32,6 +46,49 @@ export const ProvisionChamberSchema = z.object({
   custom_domain: z.string().max(100).optional().nullable(),
   admin_name: z.string().min(2, 'Admin contact name must be at least 2 characters').max(100),
   admin_email: z.string().email('Invalid email address'),
+  admin_phone: z
+    .string()
+    .trim()
+    .optional()
+    .nullable()
+    .superRefine((val, ctx) => {
+      if (!val) return;
+      if (!/^\+?[0-9\s\-().]{10,25}$/.test(val)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Please enter a valid USA phone number (e.g., +1 (555) 019-2834)',
+        });
+        return;
+      }
+      if (val.startsWith('+') && !val.startsWith('+1') && !val.startsWith('+ 1')) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'USA country code (+1) is required (e.g., +1 (555) 019-2834)',
+        });
+        return;
+      }
+      const digits = val.replace(/\D/g, '');
+      if (digits.length === 10) {
+        if (!/^[2-9]\d{9}$/.test(digits)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Please enter a valid 10-digit USA area code and phone number',
+          });
+        }
+      } else if (digits.length === 11) {
+        if (!/^1[2-9]\d{9}$/.test(digits)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Phone number must start with USA country code +1 followed by a 10-digit number',
+          });
+        }
+      } else {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Please enter a valid USA phone number with country code +1 (e.g., +1 (555) 019-2834)',
+        });
+      }
+    }),
 });
 
 export type ProvisionChamberInput = z.infer<typeof ProvisionChamberSchema>;

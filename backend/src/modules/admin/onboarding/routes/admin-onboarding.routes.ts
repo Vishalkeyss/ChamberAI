@@ -108,20 +108,6 @@ adminOnboardingRoutes.post('/admin/onboarding/finish', async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const now = new Date().toISOString();
 
-  // Guard: Chamber onboarding can only be completed once
-  const existingChamber = await c.env.DB
-    .prepare('SELECT onboarded FROM platform_chambers WHERE id = ?')
-    .bind(chamberId)
-    .first<any>();
-
-  if (existingChamber?.onboarded === 1) {
-    throw new AppError(
-      ErrorCodes.BAD_REQUEST,
-      'Chamber onboarding has already been completed. Further updates must be managed via Admin Settings and Plan Builder.',
-      400
-    );
-  }
-
   const profile = body.profile || {};
   const branding = body.branding || {};
   const gateway = body.payment_gateway;
@@ -152,8 +138,8 @@ adminOnboardingRoutes.post('/admin/onboarding/finish', async (c) => {
       .prepare(
         `INSERT INTO chamber_settings (
            id, chamber_id, org_name, support_email, default_currency, timezone,
-           primary_color, text_color, background_color, logo_url, hero_headline, onboarding_wizard_completed
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+           primary_color, text_color, background_color, logo_url, hero_headline, hero_tagline, about_text, onboarding_wizard_completed
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
          ON CONFLICT(chamber_id) DO UPDATE SET
            org_name = excluded.org_name,
            support_email = excluded.support_email,
@@ -164,6 +150,8 @@ adminOnboardingRoutes.post('/admin/onboarding/finish', async (c) => {
            background_color = excluded.background_color,
            logo_url = excluded.logo_url,
            hero_headline = excluded.hero_headline,
+           hero_tagline = excluded.hero_tagline,
+           about_text = excluded.about_text,
            onboarding_wizard_completed = 1`
       )
       .bind(
@@ -177,7 +165,9 @@ adminOnboardingRoutes.post('/admin/onboarding/finish', async (c) => {
         branding.text_color || '#FFFFFF',
         branding.background_color || '#F5F7FA',
         branding.logo_url || null,
-        branding.hero_headline || 'Empowering Local Businesses'
+        branding.hero_headline || 'Empowering Local Businesses',
+        branding.hero_tagline || 'Join our community of entrepreneurs, civic leaders, and local business pioneers.',
+        branding.hero_tagline || 'Join our community of entrepreneurs, civic leaders, and local business pioneers.'
       )
   );
 

@@ -1,6 +1,7 @@
 import React from 'react';
 import type { ChapterOption, MembershipPlan } from '../types';
 import { CheckCircle2, ShieldCheck, Building2, User, MapPin, Layers } from 'lucide-react';
+import { PaymentCardInput, type CardFormData } from './PaymentCardInput';
 import { cn } from '@/lib/utils';
 
 interface WizardStepReviewProps {
@@ -24,6 +25,9 @@ interface WizardStepReviewProps {
   description: string;
   agreedToTerms: boolean;
   onToggleTerms: (agreed: boolean) => void;
+  cardData?: CardFormData;
+  onCardChange?: (data: CardFormData) => void;
+  cardError?: string | null;
 }
 
 export const WizardStepReview: React.FC<WizardStepReviewProps> = ({
@@ -47,6 +51,9 @@ export const WizardStepReview: React.FC<WizardStepReviewProps> = ({
   description,
   agreedToTerms,
   onToggleTerms,
+  cardData,
+  onCardChange,
+  cardError,
 }) => {
   return (
     <div className="space-y-6">
@@ -166,6 +173,28 @@ export const WizardStepReview: React.FC<WizardStepReviewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Payment Pre-Authorization for Paid Plans */}
+      {calculatedPrice > 0 && cardData && onCardChange ? (
+        <PaymentCardInput
+          cardData={cardData}
+          onChange={onCardChange}
+          planPrice={calculatedPrice}
+          planName={plan?.name || 'Membership'}
+          billingFrequency={plan?.billingFrequency}
+          error={cardError}
+        />
+      ) : calculatedPrice === 0 ? (
+        <div className="p-3.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2.5">
+          <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <div>
+            <span className="font-bold block">Complimentary Tier</span>
+            <span className="text-[11px] text-emerald-700 dark:text-emerald-400">
+              No credit card or payment pre-authorization required for this membership tier.
+            </span>
+          </div>
+        </div>
+      ) : null}
 
       {/* Code of Conduct & Terms Agreement */}
       <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-slate-50 dark:bg-slate-800/40">

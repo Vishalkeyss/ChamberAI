@@ -94,7 +94,7 @@ export function checkScopeAccess(
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [token, setToken] = useState<string | null>(() => {
     try {
-      return localStorage.getItem('auth_token');
+      return localStorage.getItem('auth_token') || localStorage.getItem('session_token');
     } catch {
       return null;
     }
@@ -177,7 +177,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // 1. Session Refresh / Introspection via GET /api/v1/auth/me
   const refreshSession = useCallback(async () => {
-    const currentToken = localStorage.getItem('auth_token');
+    const currentToken = localStorage.getItem('auth_token') || localStorage.getItem('session_token');
     if (!currentToken) {
       setIsLoading(false);
       return;

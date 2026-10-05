@@ -53,6 +53,16 @@ function getHeaders(chamberSlugOrId?: string): HeadersInit {
   return headers;
 }
 
+export interface ApplicationPaymentMethod {
+  type: 'card';
+  cardholderName: string;
+  brand: string;
+  lastFour: string;
+  expiryMonth: number;
+  expiryYear: number;
+  gatewayToken?: string;
+}
+
 export interface ApplicationSubmitPayload {
   applicantName: string;
   businessEmail: string;
@@ -60,6 +70,7 @@ export interface ApplicationSubmitPayload {
   businessName: string;
   planId: string;
   chapterId?: string | null;
+  paymentMethod?: ApplicationPaymentMethod | null;
   businessDetails?: {
     dbaName?: string;
     website?: string;
@@ -78,6 +89,7 @@ export interface ApplicationSubmitPayload {
     preferredLanguage?: string;
     socials?: Record<string, any>;
     staff?: any[];
+    paymentMethod?: ApplicationPaymentMethod | null;
   };
 }
 

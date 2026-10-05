@@ -66,6 +66,7 @@ export interface OnboardingFinishPayload {
     background_color?: string;
     logo_url?: string | null;
     hero_headline?: string;
+    hero_tagline?: string;
   };
   payment_gateway?: {
     provider: 'stripe' | 'razorpay' | 'paypal' | 'none';

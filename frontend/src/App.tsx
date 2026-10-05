@@ -121,7 +121,15 @@ function AppContent() {
     }
     return 'overview';
   });
-  const [superAdminPath, setSuperAdminPath] = useState<string>('/super/chambers');
+  const [superAdminPath, setSuperAdminPath] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const p = window.location.pathname;
+      if (p.startsWith('/super')) {
+        return p;
+      }
+    }
+    return '/super/chambers';
+  });
 
   // Public application wizard and tracking modal state
   const [publicView, setPublicView] = useState<'home' | 'apply'>(() => {
@@ -205,17 +213,11 @@ function AppContent() {
         setChambers(data);
         setIsLoadingChambers(false);
 
-        // Secure Domain / Subdomain Tenant Resolution (Zero insecure query-param tampering)
+        // Secure Domain / Subdomain Tenant Resolution
         if (typeof window !== 'undefined') {
-          // Immediately strip any insecure chamber query parameter from the URL
           const params = new URLSearchParams(window.location.search);
-          if (params.has('chamber')) {
-            params.delete('chamber');
-            const cleanQuery = params.toString() ? `?${params.toString()}` : '';
-            window.history.replaceState({}, '', `${window.location.pathname}${cleanQuery}`);
-          }
+          const chamberQueryParam = params.get('chamber');
 
-          // Resolve tenant strictly from subdomain or custom domain
           const hostname = window.location.hostname.toLowerCase();
           const rootDomain = '121meet.ai';
 
@@ -228,11 +230,19 @@ function AppContent() {
             detectedSlug = hostname.slice(0, -'.localhost'.length);
           }
 
-          if (detectedSlug && detectedSlug !== 'app' && detectedSlug !== 'superadmin' && detectedSlug !== 'www') {
+          const pathname = window.location.pathname;
+          let pathSlug: string | null = null;
+          if (pathname.startsWith('/c/')) {
+            pathSlug = pathname.split('/')[2] || null;
+          }
+
+          const effectiveSlug = detectedSlug || chamberQueryParam || pathSlug;
+
+          if (effectiveSlug && effectiveSlug !== 'app' && effectiveSlug !== 'superadmin' && effectiveSlug !== 'www') {
             const found = data.find(
               (c) =>
-                c.slug.toLowerCase() === detectedSlug ||
-                (c as any).subdomain?.toLowerCase() === detectedSlug
+                c.slug.toLowerCase() === effectiveSlug.toLowerCase() ||
+                (c as any).subdomain?.toLowerCase() === effectiveSlug.toLowerCase()
             );
             if (found) {
               setSelectedChamber(found);
@@ -265,6 +275,7 @@ function AppContent() {
     chamber: authChamber,
     highestRole,
     isAuthenticated,
+    isLoading,
     logout,
     showIdleWarning,
     idleCountdownSeconds,
@@ -284,17 +295,24 @@ function AppContent() {
       if (
         params.get('portal') === 'superadmin' ||
         params.get('portal') === 'super_admin' ||
-        pathname === '/super-admin' ||
+        pathname.startsWith('/super-admin') ||
+        pathname.startsWith('/super') ||
         search.includes('superadmin')
       ) {
         if (highestRole === 'super_admin') {
           setActiveShell('super_admin');
           setAiStage('traditional');
-        } else {
+          if (pathname.startsWith('/super')) {
+            setSuperAdminPath(pathname);
+          } else if (pathname === '/super-admin') {
+            setSuperAdminPath('/super/chambers');
+            window.history.replaceState({}, '', '/super/chambers');
+          }
+        } else if (!isLoading) {
           setLoginModalPortal('super_admin');
           setIsLoginModalOpen(true);
+          window.history.replaceState({}, '', '/');
         }
-        window.history.replaceState({}, '', pathname === '/super-admin' ? '/super-admin' : '/');
       } else if (params.get('portal') === 'admin' || pathname.startsWith('/admin')) {
         if (['full_admin', 'billing_admin', 'group_admin', 'chapter_admin'].includes(highestRole || '')) {
           setActiveShell('admin');
@@ -353,7 +371,7 @@ function AppContent() {
         }
       }
     }
-  }, [highestRole]);
+  }, [highestRole, isLoading]);
 
   // Listen for browser forward/back navigation
   useEffect(() => {
@@ -374,6 +392,9 @@ function AppContent() {
       } else if (pathname.startsWith('/super-admin') || pathname.startsWith('/super')) {
         setActiveShell('super_admin');
         setAiStage('traditional');
+        if (pathname.startsWith('/super')) {
+          setSuperAdminPath(pathname);
+        }
       } else if (pathname.startsWith('/member') || pathname.startsWith('/portal')) {
         setActiveShell('member');
         if (pathname === '/portal/ai') {
@@ -449,8 +470,9 @@ function AppContent() {
     if (highestRole === 'super_admin') {
       setActiveShell('super_admin');
       setAiStage('traditional');
+      const target = superAdminPath || '/super/chambers';
       if (typeof window !== 'undefined') {
-        window.history.pushState({}, '', '/super-admin');
+        window.history.pushState({}, '', target);
       }
     } else if (['full_admin', 'billing_admin', 'group_admin', 'chapter_admin'].includes(highestRole || '')) {
       setActiveShell('admin');
@@ -542,8 +564,9 @@ function AppContent() {
     if (role === 'super_admin') {
       setActiveShell('super_admin');
       setAiStage('traditional');
+      const target = superAdminPath || '/super/chambers';
       if (typeof window !== 'undefined') {
-        window.history.pushState({}, '', '/super-admin');
+        window.history.pushState({}, '', target);
       }
     } else if (['full_admin', 'billing_admin', 'group_admin', 'chapter_admin'].includes(role || '')) {
       setActiveShell('admin');
@@ -642,6 +665,10 @@ function AppContent() {
               if (highestRole === 'super_admin') {
                 setActiveShell('super_admin');
                 setAiStage('traditional');
+                const target = superAdminPath || '/super/chambers';
+                if (typeof window !== 'undefined') {
+                  window.history.pushState({}, '', target);
+                }
               } else {
                 setLoginModalPortal('super_admin');
                 setIsLoginModalOpen(true);
@@ -1050,7 +1077,12 @@ function AppContent() {
             <SuperAdminLayout
               user={activeUserProp}
               currentPath={superAdminPath}
-              onNavigate={(href) => setSuperAdminPath(href)}
+              onNavigate={(href) => {
+                setSuperAdminPath(href);
+                if (typeof window !== 'undefined') {
+                  window.history.pushState({}, '', href);
+                }
+              }}
               onLogout={handleLogout}
               onAccountSettings={() => setActiveShell('settings')}
             >
@@ -1118,7 +1150,7 @@ function AppContent() {
               onNavigateBack={() => {
                 if (highestRole === 'super_admin') {
                   setActiveShell('super_admin');
-                  if (typeof window !== 'undefined') window.history.pushState({}, '', '/super-admin');
+                  if (typeof window !== 'undefined') window.history.pushState({}, '', superAdminPath || '/super/chambers');
                 } else if (['full_admin', 'billing_admin', 'group_admin', 'chapter_admin'].includes(highestRole || '')) {
                   setActiveShell('admin');
                   if (typeof window !== 'undefined') window.history.pushState({}, '', adminPath || '/admin/dashboard');

@@ -24,6 +24,7 @@ import {
 } from '../services/applications.api';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { isValidPhoneNumber, normalizePhoneNumber } from '@/lib/validation';
 
 export interface TrackApplicationModalProps {
   isOpen: boolean;
@@ -132,10 +133,15 @@ export const TrackApplicationModal: React.FC<TrackApplicationModalProps> = ({
     e.preventDefault();
     if (!applicationData) return;
 
+    if (editPhone.trim() && !isValidPhoneNumber(editPhone.trim())) {
+      toast.error('Please enter a valid USA phone number (+1 (555) 019-2834)');
+      return;
+    }
+
     setIsResubmitting(true);
     try {
       const payload = {
-        businessPhone: editPhone.trim() || undefined,
+        businessPhone: editPhone.trim() ? normalizePhoneNumber(editPhone.trim()) : undefined,
         businessDetails: {
           website: editWebsite.trim() || undefined,
           description: editDescription.trim() || undefined,
@@ -363,7 +369,7 @@ export const TrackApplicationModal: React.FC<TrackApplicationModalProps> = ({
                         type="tel"
                         value={editPhone}
                         onChange={(e) => setEditPhone(e.target.value)}
-                        placeholder="e.g. +1 (555) 234-5678"
+                        placeholder="+1 (555) 019-2834"
                         className="w-full px-3 py-2 rounded-xl border border-input bg-background text-foreground text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/40"
                       />
                     </div>

@@ -143,7 +143,7 @@ export const ProfileDetailsForm: React.FC<ProfileDetailsFormProps> = ({
             id="profile-phone"
             value={profile.phone || ''}
             onChange={(e) => onChange({ phone: e.target.value })}
-            placeholder="+1 512 555 0199"
+            placeholder="+1 (555) 019-2834"
             className="rounded-lg"
           />
           <p className="text-[11px] text-muted-foreground">

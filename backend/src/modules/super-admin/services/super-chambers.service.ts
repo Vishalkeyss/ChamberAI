@@ -95,16 +95,17 @@ export class SuperChambersService {
         d1
           .prepare(
             `INSERT INTO users (
-              id, chamber_id, member_verification_token, email, name, highest_role, status,
+              id, chamber_id, member_verification_token, email, phone, name, highest_role, status,
               profile_completion_pct, preferred_language, preferred_theme,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, 'full_admin', 'active', 60, 'en', 'light', ?, ?)`
+            ) VALUES (?, ?, ?, ?, ?, ?, 'full_admin', 'active', 60, 'en', 'light', ?, ?)`
           )
           .bind(
             adminUserId,
             chamberId,
             verificationToken,
             payload.admin_email.toLowerCase().trim(),
+            payload.admin_phone ? payload.admin_phone.trim() : null,
             payload.admin_name.trim(),
             now,
             now

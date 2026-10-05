@@ -152,7 +152,23 @@ function createMockDb() {
         name: 'Free Community',
         price: 0,
         billing_frequency: 'annual',
-        features_json: JSON.stringify([]),
+        features_json: JSON.stringify(['Basic Directory Listing']),
+        is_active: 1,
+      },
+    ],
+    [
+      'plan_silver',
+      {
+        id: 'plan_silver',
+        chamber_id: 'ch_austin_001',
+        name: 'Silver Plan',
+        price: 250,
+        billing_frequency: 'annual',
+        features_json: JSON.stringify([
+          'Directory Listing',
+          'Monthly Networking Meet',
+          'Email Announcements',
+        ]),
         is_active: 1,
       },
     ],
@@ -250,16 +266,20 @@ function createMockDb() {
           if (q.includes('LEFT JOIN membership_plans mp')) {
             const [chamberId, businessId] = args;
             if (chamberId === 'ch_austin_001' && businessId === 'biz_01') {
+              const mem = membershipTable.get('mbr_01')!;
+              const pl = plansTable.get(mem.plan_id);
               return {
-                membership_id: 'mbr_01',
-                plan_id: 'plan_gold',
-                plan_name: 'Gold Business Plan',
-                features_json: JSON.stringify([
-                  'Free Event Tickets',
-                  'Directory Ad Placements',
-                  'Press Release Submissions',
-                  'Annual Gala VIP Passes',
-                ]),
+                membership_id: mem.id,
+                plan_id: mem.plan_id,
+                plan_name: pl ? pl.name : 'Gold Business Plan',
+                features_json: pl
+                  ? pl.features_json
+                  : JSON.stringify([
+                      '5 Free Event Tickets',
+                      'Directory Ad Placements',
+                      'Press Release Submissions',
+                      'Annual Gala VIP Passes',
+                    ]),
                 period_start: '2026-01-01',
                 period_end: '2026-12-31',
               };
@@ -333,6 +353,13 @@ function createMockDb() {
             const [chamberId, membershipId] = args;
             const results = Array.from(benefitUsageTable.values()).filter(
               (b) => b.chamber_id === chamberId && b.membership_id === membershipId
+            );
+            return { results };
+          }
+          if (q.includes('FROM membership_plans WHERE chamber_id = ?')) {
+            const [chamberId] = args;
+            const results = Array.from(plansTable.values()).filter(
+              (p) => p.chamber_id === chamberId
             );
             return { results };
           }
@@ -733,5 +760,53 @@ describe('Prompt 02.5: Member Billing, Invoices, Payment Methods & Benefit Usage
 
     const res = await app.fetch(req, env, {} as any);
     assert.equal(res.status, 422);
+  });
+
+  it('14. GET /api/v1/member/membership/benefits resolves inherited tier benefits and excludes unmetered perks', async () => {
+    const { app, env, mockKV, mockDb } = setupTestEnv();
+    const token = 'sess_test_token_billing_14';
+    await mockKV.put(`session:${token}`, JSON.stringify(mockSession));
+
+    // Update Gold plan to reference Silver and include unmetered perks
+    mockDb.plansTable.set('plan_gold', {
+      id: 'plan_gold',
+      chamber_id: 'ch_austin_001',
+      name: 'Gold Business Plan',
+      price: 450,
+      billing_frequency: 'annual',
+      features_json: JSON.stringify([
+        'Everything in Silver Plan',
+        'Verified Business Badge',
+        'Priority Event Seats',
+        'Referral Dashboard',
+        'Free Event Sponsorship',
+      ]),
+      is_active: 1,
+    });
+
+    const req = new Request('http://austin.121meet.ai/api/v1/member/membership/benefits', {
+      headers: {
+        Host: 'austin.121meet.ai',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const res = await app.fetch(req, env, {} as any);
+    assert.equal(res.status, 200);
+
+    const json = (await res.json()) as any;
+    assert.equal(json.success, true);
+
+    const benefitNames = json.data.map((b: any) => b.benefit_name);
+    // Verify "Everything in Silver" is NOT in benefits
+    assert.ok(!benefitNames.some((n: string) => n.toLowerCase().includes('everything in')));
+    assert.ok(!benefitNames.some((n: string) => n.toLowerCase().includes('priority event seats')));
+    assert.ok(!benefitNames.some((n: string) => n.toLowerCase().includes('referral dashboard')));
+
+    // Verify Silver's inherited trackable benefits ARE included
+    assert.ok(benefitNames.some((n: string) => n.toLowerCase().includes('directory listing')));
+    assert.ok(benefitNames.some((n: string) => n.toLowerCase().includes('networking meet')));
+    assert.ok(benefitNames.some((n: string) => n.toLowerCase().includes('email announcements')));
+    assert.ok(benefitNames.some((n: string) => n.toLowerCase().includes('sponsorship')));
   });
 });

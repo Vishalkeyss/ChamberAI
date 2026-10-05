@@ -95,13 +95,68 @@ export async function fetchAdminApplications(
   return json.data || [];
 }
 
+export interface ApproveApplicationResponse {
+  id: string;
+  status: string;
+  message: string;
+  charge?: {
+    charged: boolean;
+    amount: number;
+    cardLastFour: string | null;
+    transactionId: string | null;
+    invoiceId: string | null;
+  };
+}
+
+/**
+ * Fetch application approval mode setting (manual review vs auto-approve)
+ */
+export async function fetchApprovalMode(
+  chamberSlugOrId?: string
+): Promise<{ autoApprove: boolean }> {
+  const res = await fetch(`${API_BASE}/api/v1/admin/applications/approval-mode`, {
+    method: 'GET',
+    headers: getHeaders(chamberSlugOrId),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Failed to fetch approval mode (${res.status})`);
+  }
+
+  const json = await res.json();
+  return json.data;
+}
+
+/**
+ * Update application approval mode setting (manual review vs auto-approve)
+ */
+export async function updateApprovalMode(
+  autoApprove: boolean,
+  chamberSlugOrId?: string
+): Promise<{ autoApprove: boolean; message: string }> {
+  const res = await fetch(`${API_BASE}/api/v1/admin/applications/approval-mode`, {
+    method: 'PATCH',
+    headers: getHeaders(chamberSlugOrId),
+    body: JSON.stringify({ autoApprove }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Failed to update approval mode (${res.status})`);
+  }
+
+  const json = await res.json();
+  return json.data;
+}
+
 /**
  * Approve an application
  */
 export async function approveApplication(
   id: string,
   chamberSlugOrId?: string
-): Promise<{ id: string; status: string; message: string }> {
+): Promise<ApproveApplicationResponse> {
   const res = await fetch(`${API_BASE}/api/v1/admin/applications/${id}/approve`, {
     method: 'PATCH',
     headers: getHeaders(chamberSlugOrId),

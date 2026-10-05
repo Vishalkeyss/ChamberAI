@@ -20,8 +20,14 @@ import { WizardStepPlan } from '../components/WizardStepPlan';
 import { WizardStepContact } from '../components/WizardStepContact';
 import { WizardStepBusiness } from '../components/WizardStepBusiness';
 import { WizardStepReview } from '../components/WizardStepReview';
+import {
+  type CardFormData,
+  detectCardBrand,
+  validateCardData,
+} from '../components/PaymentCardInput';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { isValidPhoneNumber, normalizePhoneNumber } from '@/lib/validation';
 
 export interface ApplicationWizardPageProps {
   chamberName?: string;
@@ -79,6 +85,15 @@ export const ApplicationWizardPage: React.FC<ApplicationWizardPageProps> = ({
   const [employeeCount, setEmployeeCount] = useState<number>(5);
   const [annualRevenue, setAnnualRevenue] = useState<number>(250000);
   const [description, setDescription] = useState<string>('');
+
+  // Payment Pre-Authorization
+  const [cardData, setCardData] = useState<CardFormData>({
+    cardholderName: '',
+    cardNumber: '',
+    expiry: '',
+    cvc: '',
+  });
+  const [cardError, setCardError] = useState<string | null>(null);
 
   // Agreement
   const [agreedToTerms, setAgreedToTerms] = useState<boolean>(false);
@@ -289,7 +304,11 @@ export const ApplicationWizardPage: React.FC<ApplicationWizardPageProps> = ({
     } else if (step === 2) {
       if (!fullName.trim()) newErrors.fullName = 'Full Name is required';
       if (!email.trim() || !/^\S+@\S+\.\S+$/.test(email)) newErrors.email = 'Valid email is required';
-      if (!phone.trim()) newErrors.phone = 'Phone number is required';
+      if (!phone.trim()) {
+        newErrors.phone = 'Phone number is required';
+      } else if (!isValidPhoneNumber(phone)) {
+        newErrors.phone = 'Please enter a valid USA phone number with country code +1 (e.g., +1 (555) 019-2834)';
+      }
     } else if (step === 3) {
       if (!businessName.trim()) newErrors.businessName = 'Business name is required';
       if (!industry.trim()) newErrors.industry = 'Industry category is required';
@@ -322,15 +341,42 @@ export const ApplicationWizardPage: React.FC<ApplicationWizardPageProps> = ({
       return;
     }
 
+    let paymentMethodPayload = undefined;
+    if (calculatedPrice > 0) {
+      const validation = validateCardData(cardData);
+      if (!validation.valid) {
+        setCardError(validation.error || 'Please provide valid card details');
+        toast.error(validation.error || 'Please provide valid card details');
+        return;
+      }
+      setCardError(null);
+
+      const cardDigits = cardData.cardNumber.replace(/\D/g, '');
+      const [mmStr, yyStr] = cardData.expiry.split('/');
+      const mm = parseInt(mmStr, 10);
+      const fullYear = yyStr.length === 2 ? 2000 + parseInt(yyStr, 10) : parseInt(yyStr, 10);
+
+      paymentMethodPayload = {
+        type: 'card' as const,
+        cardholderName: cardData.cardholderName.trim() || fullName.trim(),
+        brand: detectCardBrand(cardDigits),
+        lastFour: cardDigits.slice(-4),
+        expiryMonth: mm,
+        expiryYear: fullYear,
+        gatewayToken: `tok_preauth_${Math.random().toString(36).substring(2, 10)}`,
+      };
+    }
+
     setIsSubmitting(true);
     try {
       const payload: ApplicationSubmitPayload = {
         applicantName: fullName.trim(),
         businessEmail: email.trim().toLowerCase(),
-        businessPhone: phone.trim(),
+        businessPhone: normalizePhoneNumber(phone.trim()),
         businessName: businessName.trim(),
         planId: selectedPlanId,
         chapterId: selectedChapterId || null,
+        paymentMethod: paymentMethodPayload,
         businessDetails: {
           dbaName: dbaName.trim() || undefined,
           website: website.trim() || undefined,
@@ -346,6 +392,7 @@ export const ApplicationWizardPage: React.FC<ApplicationWizardPageProps> = ({
           description: description.trim() || undefined,
           jobTitle: jobTitle.trim() || undefined,
           preferredLanguage,
+          paymentMethod: paymentMethodPayload,
         },
       };
 
@@ -588,6 +635,12 @@ export const ApplicationWizardPage: React.FC<ApplicationWizardPageProps> = ({
                 description={description}
                 agreedToTerms={agreedToTerms}
                 onToggleTerms={setAgreedToTerms}
+                cardData={cardData}
+                onCardChange={(d) => {
+                  setCardData(d);
+                  if (cardError) setCardError(null);
+                }}
+                cardError={cardError}
               />
             )}
 

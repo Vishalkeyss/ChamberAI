@@ -6,7 +6,44 @@ export const updateProfileSchema = z.object({
   phone: z
     .string()
     .trim()
-    .regex(/^\+?[1-9]\d{1,14}$/, 'Invalid E.164 phone format')
+    .superRefine((val, ctx) => {
+      if (!val) return;
+      if (!/^\+?[0-9\s\-().]{10,25}$/.test(val)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Please enter a valid USA phone number (e.g., +1 (555) 019-2834)',
+        });
+        return;
+      }
+      if (val.startsWith('+') && !val.startsWith('+1') && !val.startsWith('+ 1')) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'USA country code (+1) is required (e.g., +1 (555) 019-2834)',
+        });
+        return;
+      }
+      const digits = val.replace(/\D/g, '');
+      if (digits.length === 10) {
+        if (!/^[2-9]\d{9}$/.test(digits)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Please enter a valid 10-digit USA area code and phone number',
+          });
+        }
+      } else if (digits.length === 11) {
+        if (!/^1[2-9]\d{9}$/.test(digits)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Phone number must start with USA country code +1 followed by a 10-digit number',
+          });
+        }
+      } else {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Please enter a valid USA phone number with country code +1 (e.g., +1 (555) 019-2834)',
+        });
+      }
+    })
     .optional()
     .nullable(),
 });

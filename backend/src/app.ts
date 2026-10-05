@@ -9,6 +9,7 @@ import { resolveChamberMiddleware } from './core/middleware/tenant-resolver';
 import { createRateLimiter } from './core/middleware/rate-limiter';
 import { healthRouter } from './api/routes/health';
 import { publicSettingsRouter } from './api/routes/public-settings';
+import { publicDirectoryRouter } from './api/routes/public-directory';
 import { authRoutes } from './modules/auth/routes/otp.routes';
 import { sessionRoutes } from './modules/auth/routes/session.routes';
 import { accountSettingsRoutes } from './modules/settings/routes/account-settings.routes';
@@ -45,6 +46,7 @@ export function createApp() {
   const apiV1 = new Hono<{ Bindings: Env; Variables: AppVariables }>();
   apiV1.route('/', healthRouter);
   apiV1.route('/', publicSettingsRouter);
+  apiV1.route('/', publicDirectoryRouter);
   apiV1.route('/auth', authRoutes);
   apiV1.route('/auth', sessionRoutes);
   apiV1.route('/', accountSettingsRoutes);
