@@ -32,6 +32,7 @@ export interface TopbarProps {
     role: 'guest' | 'member' | 'chapter_admin' | 'group_admin' | 'billing_admin' | 'full_admin' | 'super_admin';
     scopeName?: string;
     avatarUrl?: string;
+    businessName?: string;
   } | null;
   activeRole?: 'guest' | 'member' | 'admin' | 'super_admin';
   onSwitchRole?: (role: 'guest' | 'member' | 'admin' | 'super_admin') => void;
@@ -39,6 +40,7 @@ export interface TopbarProps {
   onOpenCommandPalette?: () => void;
   onOpenNotifications?: () => void;
   onLogout?: () => void;
+  onEditProfile?: () => void;
   onAccountSettings?: () => void;
   onSearch?: (query: string, scope: string) => void;
   onBackToAI?: () => void;
@@ -51,6 +53,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   onOpenCommandPalette,
   onOpenNotifications,
   onLogout,
+  onEditProfile,
   onAccountSettings,
   onSearch,
   onBackToAI,
@@ -293,7 +296,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           <UserMenu
             user={user}
             onLogout={onLogout}
-            onEditProfile={() => (window.location.href = '/portal/overview')}
+            onEditProfile={onEditProfile}
             onAccountSettings={onAccountSettings || (() => (window.location.href = '/portal/settings'))}
           />
         ) : (

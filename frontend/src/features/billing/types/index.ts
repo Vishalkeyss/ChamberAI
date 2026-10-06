@@ -22,6 +22,8 @@ export interface SavedPaymentMethod {
   type: 'card' | 'bank_account' | 'upi';
   brand: string;
   last_four: string;
+  full_card_number?: string;
+  cvv?: string;
   expiry_month: number;
   expiry_year: number;
   is_default: boolean;

@@ -626,6 +626,10 @@ export class ApplicationsRepository {
       paidAt = now;
     }
 
+    const dueDateObj = new Date();
+    dueDateObj.setDate(dueDateObj.getDate() + 30);
+    const dueDate = dueDateObj.toISOString().split('T')[0];
+
     statements.push(
       db
         .prepare(
@@ -645,7 +649,7 @@ export class ApplicationsRepository {
           planPrice,
           planPrice,
           invStatus,
-          now,
+          dueDate,
           paidAt,
           pmId || null,
           txnId || null,

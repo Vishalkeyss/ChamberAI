@@ -36,7 +36,7 @@ export const resolveChamberMiddleware: MiddlewareHandler<{
   // 1. Try explicit ID or Slug if provided
   if (explicitChamberId) {
     chamber = await c.env.DB.prepare(
-      'SELECT id, name, subdomain, custom_domain, status FROM platform_chambers WHERE (id = ? OR subdomain = ?) AND status != "suspended" LIMIT 1'
+      "SELECT id, name, subdomain, custom_domain, status FROM platform_chambers WHERE (id = ? OR subdomain = ?) AND status != 'suspended' LIMIT 1"
     )
       .bind(explicitChamberId, explicitChamberId)
       .first<ChamberContextData>();
@@ -45,7 +45,7 @@ export const resolveChamberMiddleware: MiddlewareHandler<{
   const subdomain = explicitChamberSlug || extractSubdomain(host, rootDomain);
   if (!chamber && subdomain) {
     chamber = await c.env.DB.prepare(
-      'SELECT id, name, subdomain, custom_domain, status FROM platform_chambers WHERE (subdomain = ? OR id = ?) AND status != "suspended" LIMIT 1'
+      "SELECT id, name, subdomain, custom_domain, status FROM platform_chambers WHERE (subdomain = ? OR id = ?) AND status != 'suspended' LIMIT 1"
     )
       .bind(subdomain, subdomain)
       .first<ChamberContextData>();
@@ -54,7 +54,7 @@ export const resolveChamberMiddleware: MiddlewareHandler<{
   // 2. Try host custom domain
   if (!chamber && host && !isPlatformHost) {
     chamber = await c.env.DB.prepare(
-      'SELECT id, name, subdomain, custom_domain, status FROM platform_chambers WHERE custom_domain = ? AND status != "suspended" LIMIT 1'
+      "SELECT id, name, subdomain, custom_domain, status FROM platform_chambers WHERE custom_domain = ? AND status != 'suspended' LIMIT 1"
     )
       .bind(cleanHost)
       .first<ChamberContextData>();
@@ -68,7 +68,7 @@ export const resolveChamberMiddleware: MiddlewareHandler<{
       const session = await SessionService.getSession(c, token);
       if (session?.chamberId) {
         chamber = await c.env.DB.prepare(
-          'SELECT id, name, subdomain, custom_domain, status FROM platform_chambers WHERE id = ? AND status != "suspended" LIMIT 1'
+          "SELECT id, name, subdomain, custom_domain, status FROM platform_chambers WHERE id = ? AND status != 'suspended' LIMIT 1"
         )
           .bind(session.chamberId)
           .first<ChamberContextData>();

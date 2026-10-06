@@ -95,6 +95,7 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
   const [cardData, setCardData] = useState<CardFormData>({
     cardholderName: '',
     cardNumber: '',
+    brand: 'Visa',
     expiry: '',
     cvc: '',
   });
@@ -126,6 +127,7 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
       setCardData({
         cardholderName: fullName || '',
         cardNumber: '',
+        brand: 'Visa',
         expiry: '',
         cvc: '',
       });
@@ -257,7 +259,7 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
       paymentMethodPayload = {
         type: 'card' as const,
         cardholderName: cardData.cardholderName.trim() || fullName.trim(),
-        brand: detectCardBrand(cardDigits),
+        brand: cardData.brand || detectCardBrand(cardDigits),
         lastFour: cardDigits.slice(-4),
         expiryMonth: mm,
         expiryYear: fullYear,

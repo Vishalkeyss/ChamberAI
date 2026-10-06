@@ -5,9 +5,18 @@ import { cn } from '@/lib/utils';
 export interface CardFormData {
   cardholderName: string;
   cardNumber: string;
+  brand?: string;
   expiry: string; // MM/YY
   cvc: string;
 }
+
+export const CARD_BRANDS = [
+  { id: 'visa', name: 'Visa', dotColor: 'bg-blue-600' },
+  { id: 'mastercard', name: 'Mastercard', dotColor: 'bg-amber-600' },
+  { id: 'rupay', name: 'RuPay', dotColor: 'bg-emerald-600' },
+  { id: 'amex', name: 'Amex', dotColor: 'bg-cyan-700' },
+  { id: 'discover', name: 'Discover', dotColor: 'bg-orange-600' },
+] as const;
 
 export interface PaymentCardInputProps {
   cardData: CardFormData;
@@ -18,10 +27,11 @@ export interface PaymentCardInputProps {
   error?: string | null;
 }
 
-export function detectCardBrand(num: string): 'visa' | 'mastercard' | 'amex' | 'discover' | 'card' {
+export function detectCardBrand(num: string): 'visa' | 'mastercard' | 'rupay' | 'amex' | 'discover' | 'card' {
   const clean = num.replace(/\D/g, '');
   if (/^4/.test(clean)) return 'visa';
   if (/^(5[1-5]|2[2-7])/.test(clean)) return 'mastercard';
+  if (/^(60|6521|6522|81|82|508)/.test(clean)) return 'rupay';
   if (/^3[47]/.test(clean)) return 'amex';
   if (/^(6011|65)/.test(clean)) return 'discover';
   return 'card';
@@ -73,11 +83,22 @@ export const PaymentCardInput: React.FC<PaymentCardInputProps> = ({
   billingFrequency = 'annual',
   error,
 }) => {
-  const brand = detectCardBrand(cardData.cardNumber);
+  const detected = detectCardBrand(cardData.cardNumber);
+  const activeBrand = cardData.brand || (detected !== 'card' ? detected : 'Visa');
+
+  const handleBrandSelect = (brandName: string) => {
+    onChange({ ...cardData, brand: brandName });
+  };
 
   const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatCardNumber(e.target.value);
-    onChange({ ...cardData, cardNumber: formatted });
+    const digits = formatted.replace(/\D/g, '');
+    const newDetected = detectCardBrand(digits);
+    onChange({
+      ...cardData,
+      cardNumber: formatted,
+      brand: newDetected !== 'card' ? newDetected : (cardData.brand || 'Visa'),
+    });
   };
 
   const handleExpiryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -91,28 +112,35 @@ export const PaymentCardInput: React.FC<PaymentCardInputProps> = ({
   };
 
   const getBrandBadge = () => {
-    switch (brand) {
+    switch (activeBrand.toLowerCase()) {
       case 'visa':
         return (
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-black tracking-wider bg-blue-600 text-white uppercase">
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-black tracking-wider bg-blue-600 text-white uppercase shadow-2xs">
             VISA
           </span>
         );
       case 'mastercard':
         return (
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-black tracking-wider bg-amber-600 text-white uppercase">
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-black tracking-wider bg-amber-600 text-white uppercase shadow-2xs">
             MC
+          </span>
+        );
+      case 'rupay':
+      case 'rupee':
+        return (
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-black tracking-wider bg-emerald-600 text-white uppercase shadow-2xs">
+            RUPAY
           </span>
         );
       case 'amex':
         return (
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-black tracking-wider bg-cyan-700 text-white uppercase">
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-black tracking-wider bg-cyan-700 text-white uppercase shadow-2xs">
             AMEX
           </span>
         );
       case 'discover':
         return (
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-black tracking-wider bg-orange-600 text-white uppercase">
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-black tracking-wider bg-orange-600 text-white uppercase shadow-2xs">
             DISC
           </span>
         );
@@ -150,6 +178,34 @@ export const PaymentCardInput: React.FC<PaymentCardInputProps> = ({
           {error}
         </div>
       )}
+
+      {/* Card Brand / Network Selection */}
+      <div>
+        <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">
+          Card Brand / Network*
+        </label>
+        <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+          {CARD_BRANDS.map((b) => {
+            const isSelected = activeBrand.toLowerCase() === b.id.toLowerCase();
+            return (
+              <button
+                type="button"
+                key={b.id}
+                onClick={() => handleBrandSelect(b.name)}
+                className={cn(
+                  "py-1.5 px-1 sm:px-2 text-xs font-bold rounded-lg border text-center transition-all flex items-center justify-center gap-1.5 cursor-pointer select-none",
+                  isSelected
+                    ? "border-blue-600 bg-blue-50 text-blue-900 dark:border-blue-400 dark:bg-blue-950/70 dark:text-blue-200 shadow-2xs ring-1 ring-blue-500/20"
+                    : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-750"
+                )}
+              >
+                <span className={cn("w-2 h-2 rounded-full shrink-0", b.dotColor)} />
+                <span className="truncate">{b.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Cardholder Name */}
       <div>

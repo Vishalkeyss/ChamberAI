@@ -35,6 +35,9 @@ import { AdminApplicationsPage } from './features/admin/membership/pages/AdminAp
 import { VerifyMemberModal } from './features/member/components/VerifyMemberModal';
 import { MemberVerificationPage } from './features/member/pages/MemberVerificationPage';
 import { MemberBillingPage } from './features/billing/pages/MemberBillingPage';
+import { EditBusinessProfileModal } from './features/member/components/EditBusinessProfileModal';
+import { fetchBusinessProfile } from './features/member/services/business-profile.api';
+import { DirectoryPage } from './features/directory/pages/DirectoryPage';
 
 type ActiveShell =
   | 'public'
@@ -112,11 +115,13 @@ function AppContent() {
     return '/admin/onboarding';
   });
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
-  const [memberView, setMemberView] = useState<'overview' | 'plans' | 'billing'>(() => {
+  const [isEditBusinessProfileOpen, setIsEditBusinessProfileOpen] = useState(false);
+  const [memberView, setMemberView] = useState<'overview' | 'plans' | 'billing' | 'directory'>(() => {
     if (typeof window !== 'undefined') {
       const p = window.location.pathname;
       if (p === '/portal/billing' || p === '/billing') return 'billing';
-      if (p === '/portal/membership' || p === '/portal/wallet' || p === '/membership') return 'plans';
+      if (p === '/portal/membership' || p === '/portal/wallet' || p === '/membership' || p === '/portal/team') return 'plans';
+      if (p === '/portal/directory' || p === '/directory') return 'directory';
       if (p.startsWith('/portal') || p.startsWith('/member')) return 'overview';
     }
     return 'overview';
@@ -186,7 +191,14 @@ function AppContent() {
     const handleUrlChange = () => {
       const path = window.location.pathname;
       const params = new URLSearchParams(window.location.search);
-      if (path.startsWith('/verify/member/')) {
+      if (path === '/portal/business-profile' || path === '/member/business-profile') {
+        setIsEditBusinessProfileOpen(true);
+        setMemberView('overview');
+        window.history.replaceState({}, '', '/portal/overview');
+      } else if (path === '/portal/team' || path === '/member/team') {
+        setMemberView('plans');
+        window.history.replaceState({}, '', '/portal/membership');
+      } else if (path.startsWith('/verify/member/')) {
         const parts = path.split('/').filter(Boolean);
         if (parts.length >= 3) {
           setVerifyMemberId(decodeURIComponent(parts[2]));
@@ -199,8 +211,14 @@ function AppContent() {
         setActiveShell('verify');
       }
     };
+
+    const handleOpenProfileModal = () => setIsEditBusinessProfileOpen(true);
     window.addEventListener('popstate', handleUrlChange);
-    return () => window.removeEventListener('popstate', handleUrlChange);
+    window.addEventListener('open-business-profile-modal', handleOpenProfileModal);
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('open-business-profile-modal', handleOpenProfileModal);
+    };
   }, []);
 
   // Load registered chambers dynamically from the D1 database
@@ -619,12 +637,47 @@ function AppContent() {
     }
   };
 
+  const [businessLogo, setBusinessLogo] = useState<string | null | undefined>(undefined);
+
+  // Sync business logo for member profile avatar
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchBusinessProfile()
+        .then((profile) => {
+          if (profile?.logoUrl) {
+            setBusinessLogo(profile.logoUrl);
+          } else {
+            setBusinessLogo(null);
+          }
+        })
+        .catch(() => {
+          setBusinessLogo(null);
+        });
+    } else {
+      setBusinessLogo(undefined);
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    const handleLogoUpdate = (e: any) => {
+      const url = e.detail?.logoUrl;
+      setBusinessLogo(url ? url : null);
+    };
+    window.addEventListener('business-logo:updated', handleLogoUpdate);
+    return () => {
+      window.removeEventListener('business-logo:updated', handleLogoUpdate);
+    };
+  }, []);
+
   const activeUserProp = user
     ? {
         name: user.name || `${user.firstName} ${user.lastName}`.trim() || user.email,
         email: user.email,
         role: user.highestRole,
-        avatarUrl: user.avatarUrl || undefined,
+        avatarUrl:
+          businessLogo !== undefined
+            ? (businessLogo || undefined)
+            : (user.avatarUrl || undefined),
         businessName: (user as any).businessName || (user as any).company || undefined,
         chapter: (user as any).chapter || (user as any).chapterName || undefined,
         chamber: authChamber?.name || resolvedChamberName,
@@ -737,10 +790,12 @@ function AppContent() {
               onLogout={handleLogout}
             />
           ) : (
-            <MemberLayout
-              chamberName={resolvedChamberName}
+            <>
+              <MemberLayout
+                chamberName={resolvedChamberName}
               user={activeUserProp}
               onLogout={handleLogout}
+              onEditProfile={() => setIsEditBusinessProfileOpen(true)}
               onAccountSettings={() => {
                 setActiveShell('settings');
                 if (typeof window !== 'undefined') {
@@ -758,15 +813,27 @@ function AppContent() {
                   ? '/portal/membership'
                   : memberView === 'billing'
                   ? '/portal/billing'
+                  : memberView === 'directory'
+                  ? '/portal/directory'
                   : '/portal/overview'
               }
               onNavigate={(path) => {
                 if (typeof window !== 'undefined') {
                   window.history.pushState({}, '', path);
                 }
-                if (path === '/portal/membership' || path === '/portal/wallet') setMemberView('plans');
-                else if (path === '/portal/billing') setMemberView('billing');
-                else setMemberView('overview');
+                if (path === '/portal/membership' || path === '/portal/wallet' || path === '/portal/team' || path === '/member/team') {
+                  setMemberView('plans');
+                } else if (path === '/portal/billing') {
+                  setMemberView('billing');
+                } else if (path === '/portal/directory' || path === '/directory') {
+                  setMemberView('directory');
+                } else if (path === '/portal/business-profile' || path === '/member/business-profile') {
+                  setIsEditBusinessProfileOpen(true);
+                  setMemberView('overview');
+                  if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/overview');
+                } else {
+                  setMemberView('overview');
+                }
               }}
             >
               {memberView === 'plans' ? (
@@ -787,12 +854,32 @@ function AppContent() {
                       setMemberView('billing');
                       if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/billing');
                     }
+                    if (id === 'directory') {
+                      setMemberView('directory');
+                      if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/directory');
+                    }
+                    if (id === 'business-profile' || id === 'profile') {
+                      setIsEditBusinessProfileOpen(true);
+                    }
+                    if (id === 'team') {
+                      setMemberView('plans');
+                    }
                   }}
                 />
               ) : memberView === 'billing' ? (
                 <MemberBillingPage
                   chamberName={resolvedChamberName}
                   onNavigateMembership={() => {
+                    setMemberView('plans');
+                    if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/membership');
+                  }}
+                />
+              ) : memberView === 'directory' ? (
+                <DirectoryPage
+                  mode="member"
+                  chamberName={resolvedChamberName}
+                  chamberSlug={resolvedChamberSlug}
+                  onNavigateToPlans={() => {
                     setMemberView('plans');
                     if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/membership');
                   }}
@@ -812,10 +899,28 @@ function AppContent() {
                       setMemberView('billing');
                       if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/billing');
                     }
+                    if (id === 'directory') {
+                      setMemberView('directory');
+                      if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/directory');
+                    }
+                    if (id === 'business-profile' || id === 'profile') {
+                      setIsEditBusinessProfileOpen(true);
+                    }
+                    if (id === 'team') {
+                      setMemberView('plans');
+                      if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/membership');
+                    }
                   }}
                 />
               )}
             </MemberLayout>
+
+              {/* Modal for editing business profile from profile icon */}
+              <EditBusinessProfileModal
+                isOpen={isEditBusinessProfileOpen}
+                onClose={() => setIsEditBusinessProfileOpen(false)}
+              />
+            </>
           )}
         </ProtectedRoute>
       )}

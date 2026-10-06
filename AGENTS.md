@@ -148,15 +148,16 @@ The backend must enforce:
 
 where applicable.
 
-### 6. Database
+### 6. Database & Drizzle ORM Priority
 
-Before creating or modifying a table or migration:
-
-1. Check `database/DB_tables_reference.md` and `database/DB_schema.dbml` (the canonical database authority).
-2. Check existing migrations in `backend/db/migrations/`.
-3. Check existing code usage.
-4. Check relationships and constraints in `database/relationships.md`.
-5. Strictly adhere to the Database Schema Lock & Integrity Rule in `MASTER_IMPLEMENTATION_PLAYBOOK.md` (Prompt 00.2).
+- **Drizzle ORM First Priority:** **Drizzle ORM** (`drizzle-orm/d1`) is the first-priority database access method for all queries, mutations, and repository layers.
+- **Raw SQL Restriction:** Raw SQL (`db.prepare()`) must only be used if a specific situation strictly requires raw SQL (such as driver-level pragmas or unsupported native SQLite constructs). Otherwise, always use Drizzle schemas and queries (`drizzle(db)`).
+- Before creating or modifying a table or migration:
+  1. Check `database/DB_tables_reference.md` and `database/DB_schema.dbml` (the canonical database authority).
+  2. Check existing migrations in `backend/db/migrations/`.
+  3. Check existing code usage.
+  4. Check relationships and constraints in `database/relationships.md`.
+  5. Strictly adhere to the Database Schema Lock & Integrity Rule in `MASTER_IMPLEMENTATION_PLAYBOOK.md` (Prompt 00.2).
 
 Do not create duplicate tables for functionality that already exists.
 

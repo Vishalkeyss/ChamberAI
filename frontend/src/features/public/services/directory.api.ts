@@ -127,9 +127,22 @@ export async function fetchDirectoryListings(
     }
 
     const data = await res.json();
+    const rawList = Array.isArray(data?.data) ? data.data : (data?.data?.businesses || []);
+    const rawMeta = data?.meta?.meta || (data?.meta?.page ? data.meta : null) || data?.data?.meta || {
+      page: 1,
+      limit: 12,
+      total: rawList.length,
+      totalPages: Math.ceil(rawList.length / 12) || 1,
+    };
+
     return {
-      businesses: data?.data?.businesses || [],
-      meta: data?.data?.meta || { page: 1, limit: 12, total: 0, totalPages: 0 },
+      businesses: rawList,
+      meta: {
+        page: Number(rawMeta.page) || 1,
+        limit: Number(rawMeta.limit) || 12,
+        total: Number(rawMeta.total) || rawList.length,
+        totalPages: Number(rawMeta.totalPages) || Math.ceil(rawList.length / 12) || 1,
+      },
     };
   } catch (err) {
     console.error('Error fetching directory listings:', err);

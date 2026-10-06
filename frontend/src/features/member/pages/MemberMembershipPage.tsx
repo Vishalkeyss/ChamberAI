@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import QRCode from 'qrcode';
+import LOGO_SRC from '@/assets/logo.png';
 import {
   Shield,
   CreditCard,
@@ -39,6 +40,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { TeamRepresentativesSection } from '../components/TeamRepresentativesSection';
 
 export interface MemberMembershipPageProps {
   chamberName?: string;
@@ -65,7 +67,6 @@ export const MemberMembershipPage: React.FC<MemberMembershipPageProps> = ({
   onNavigateSection,
   onOpenCart,
 }) => {
-  const [activeTab, setActiveTab] = useState<'membership' | 'wallet'>('membership');
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [isLoadingPlans, setIsLoadingPlans] = useState<boolean>(true);
   const [activeChapters, setActiveChapters] = useState<ChapterOption[]>([]);
@@ -85,6 +86,20 @@ export const MemberMembershipPage: React.FC<MemberMembershipPageProps> = ({
   const showChapter = chamberHasChapters && memberBelongsToChapter;
   const scopeLabel = showChapter ? 'Chapter' : 'Chamber';
   const scopeValue = showChapter ? userChapter! : chamberName;
+
+  const chamberAcronym = React.useMemo(() => {
+    if (chamberSlug) return chamberSlug.toUpperCase().slice(0, 4);
+    const words = chamberName
+      .replace(/[^a-zA-Z0-9\s]/g, '')
+      .split(/\s+/)
+      .filter(Boolean);
+    if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
+    const initials = words.map((w) => w[0].toUpperCase()).join('');
+    if (initials.length > 3 && words.some((w) => w.toLowerCase() === 'of')) {
+      return initials.slice(0, 3);
+    }
+    return initials.slice(0, 4);
+  }, [chamberName, chamberSlug]);
 
   const [currentPlanName, setCurrentPlanName] = useState<string>(user?.plan || '');
   const [currentPlanId, setCurrentPlanId] = useState<string | null>(null);
@@ -134,8 +149,8 @@ export const MemberMembershipPage: React.FC<MemberMembershipPageProps> = ({
   }, [currentPlan, plans]);
 
   const [membershipStatus, setMembershipStatus] = useState<string>('Active');
-  const [expiryDate, setExpiryDate] = useState<string>('Dec 31, 2026');
-  const [memberSince, setMemberSince] = useState<string>(new Date().getFullYear().toString());
+  const [expiryDate, setExpiryDate] = useState<string>('04 Oct 2026');
+  const [memberSince, setMemberSince] = useState<string>('2023');
   const [serverMemberId, setServerMemberId] = useState<string>('');
   const [daysLeft, setDaysLeft] = useState<number>(98);
 
@@ -167,7 +182,7 @@ export const MemberMembershipPage: React.FC<MemberMembershipPageProps> = ({
     serverMemberId ||
     (user as any)?.memberIdDisplay ||
     (user as any)?.id ||
-    `${memberInitials}-2026-4821`;
+    `${memberInitials || 'AM'}-2026-1598`;
 
   // QR Code base64 Data URL state for instant display and canvas embedding
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
@@ -177,13 +192,13 @@ export const MemberMembershipPage: React.FC<MemberMembershipPageProps> = ({
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     const verificationUrl = `${origin}/verify/member/${encodeURIComponent(memberId)}`;
     QRCode.toDataURL(verificationUrl, {
-      width: 320,
+      width: 400,
       margin: 1,
       color: {
-        dark: '#0B2447',
+        dark: '#071E3D',
         light: '#ffffff',
       },
-      errorCorrectionLevel: 'M',
+      errorCorrectionLevel: 'H',
     })
       .then((dataUri) => {
         setQrDataUrl(dataUri);
@@ -480,220 +495,458 @@ Authentication Hash: 0x${Math.random().toString(16).slice(2, 10).toUpperCase()}
     toast.success('Digital Certificate downloaded successfully');
   };
 
-  // Digital Wallet Download with embedded high-resolution QR code
+  // Digital Wallet Download with embedded QR code inside the card
   const handleDownloadWalletCard = async () => {
     try {
       const canvas = document.createElement('canvas');
       canvas.width = 1000;
-      canvas.height = 600;
+      canvas.height = 580;
       const ctx = canvas.getContext('2d');
-      if (ctx) {
-        // Gradient background
-        const g = ctx.createLinearGradient(0, 0, 1000, 600);
-        g.addColorStop(0, '#0B2447');
-        g.addColorStop(1, '#16385C');
-        ctx.fillStyle = g;
-        ctx.fillRect(0, 0, 1000, 600);
+      if (!ctx) return;
 
-        // Chamber Name & Header
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 32px Inter, sans-serif';
-        ctx.fillText(chamberName, 60, 90);
-        ctx.font = '600 18px Inter, sans-serif';
-        ctx.fillStyle = '#CBD9EC';
-        ctx.fillText('Digital Membership Pass', 60, 125);
+      const drawRoundRect = (
+        context: CanvasRenderingContext2D,
+        x: number,
+        y: number,
+        w: number,
+        h: number,
+        r: number
+      ) => {
+        context.beginPath();
+        context.moveTo(x + r, y);
+        context.arcTo(x + w, y, x + w, y + h, r);
+        context.arcTo(x + w, y + h, x, y + h, r);
+        context.arcTo(x, y + h, x, y, r);
+        context.arcTo(x, y, x + w, y, r);
+        context.closePath();
+      };
 
-        // Member Info
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 42px Inter, sans-serif';
-        ctx.fillText(memberName, 60, 240);
-        ctx.font = '22px Inter, sans-serif';
-        ctx.fillStyle = '#CBD9EC';
-        ctx.fillText(businessName, 60, 280);
-
-        // Details
-        ctx.font = '600 20px Inter, sans-serif';
-        ctx.fillText(`Member ID:    ${memberId}`, 60, 360);
-        ctx.fillText(`Tier:         ${currentPlanName}`, 60, 395);
-        ctx.fillText(`${scopeLabel}:      ${scopeValue}`, 60, 430);
-        ctx.fillText(`Member Since: ${memberSince}`, 60, 465);
-        ctx.fillText(`Valid Until:  ${expiryDate}`, 60, 500);
-
-        // QR Box (White card)
-        ctx.fillStyle = '#ffffff';
-        if (typeof (ctx as any).roundRect === 'function') {
-          ctx.beginPath();
-          (ctx as any).roundRect(660, 150, 280, 310, 16);
-          ctx.fill();
-        } else {
-          ctx.fillRect(660, 150, 280, 310);
-        }
-
-        // Generate base64 data URI to avoid CORS tainting
-        const origin = typeof window !== 'undefined' ? window.location.origin : '';
-        const verifyUrl = `${origin}/verify/member/${encodeURIComponent(memberId)}`;
-        const qrDataUri = await QRCode.toDataURL(verifyUrl, {
-          width: 240,
-          margin: 1,
-          color: {
-            dark: '#0B2447',
-            light: '#ffffff',
-          },
-          errorCorrectionLevel: 'M',
+      const loadImage = (src: string): Promise<HTMLImageElement> => {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => resolve(img);
+          img.onerror = (e) => reject(e);
+          img.src = src;
         });
+      };
 
-        // Load QR image onto canvas and export as PNG
-        const qrImg = new Image();
-        qrImg.onload = () => {
-          ctx.drawImage(qrImg, 680, 170, 240, 240);
+      // 1. Clip outer rounded card bounds
+      drawRoundRect(ctx, 0, 0, 1000, 580, 28);
+      ctx.clip();
 
-          // Subtitle under QR inside white card
-          ctx.fillStyle = '#0B2447';
-          ctx.font = 'bold 13px Inter, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText('SCAN TO VERIFY', 800, 428);
-          ctx.font = '500 11px Inter, sans-serif';
-          ctx.fillStyle = '#64748B';
-          ctx.fillText('121Meet Chamber Pass', 800, 444);
-          ctx.textAlign = 'left';
+      // 2. Rich Navy Card Gradient Background
+      const g = ctx.createLinearGradient(0, 0, 1000, 580);
+      g.addColorStop(0, '#071E3D');
+      g.addColorStop(0.5, '#0B2447');
+      g.addColorStop(1, '#153965');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 1000, 580);
 
-          canvas.toBlob((blob) => {
-            if (blob) {
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `membership-card-${memberId}.png`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              URL.revokeObjectURL(url);
-              toast.success('Digital Membership Card downloaded');
-            }
-          }, 'image/png');
-        };
-        qrImg.src = qrDataUri;
+      // Subtle radial highlight
+      const radialG = ctx.createRadialGradient(850, 480, 40, 850, 480, 450);
+      radialG.addColorStop(0, 'rgba(59, 130, 246, 0.18)');
+      radialG.addColorStop(1, 'rgba(11, 36, 71, 0)');
+      ctx.fillStyle = radialG;
+      ctx.fillRect(0, 0, 1000, 580);
+
+      // 3. Header: Chamber Name & Acronym Subtitle
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 28px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillText(chamberName, 55, 75);
+
+      ctx.fillStyle = '#A5C2EB';
+      ctx.font = '600 13px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillText(`${chamberAcronym} · DIGITAL MEMBERSHIP CARD`, 55, 102);
+
+      // 4. Load assets in parallel
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      const verifyUrl = `${origin}/verify/member/${encodeURIComponent(memberId)}`;
+      const qrDataUri = await QRCode.toDataURL(verifyUrl, {
+        width: 500,
+        margin: 1,
+        color: {
+          dark: '#071E3D',
+          light: '#ffffff',
+        },
+        errorCorrectionLevel: 'H',
+      });
+
+      const [qrImg, logoImg] = await Promise.all([
+        loadImage(qrDataUri),
+        loadImage(LOGO_SRC).catch(() => null),
+      ]);
+
+      // 5. Top-Right 121 Meet Badge
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(925, 75, 26, 0, Math.PI * 2);
+      ctx.fill();
+      if (logoImg) {
+        ctx.drawImage(logoImg, 905, 55, 40, 40);
       }
-    } catch {
+
+      // 6. Member Avatar & Name
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(95, 180, 36, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.fillStyle = '#071E3D';
+      ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.stroke();
+
+      let avatarDrawn = false;
+      if (profilePhoto) {
+        try {
+          const profileImg = await loadImage(profilePhoto);
+          ctx.clip();
+          ctx.drawImage(profileImg, 59, 144, 72, 72);
+          avatarDrawn = true;
+        } catch {
+          avatarDrawn = false;
+        }
+      }
+      if (!avatarDrawn) {
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 24px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(memberInitials, 95, 180);
+      }
+      ctx.restore();
+
+      // Member Name and Email
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 30px Inter, sans-serif';
+      ctx.fillText(memberName, 150, 172);
+
+      ctx.fillStyle = '#CBD9EC';
+      ctx.font = '500 17px Inter, sans-serif';
+      ctx.fillText(memberEmail, 150, 202);
+
+      // 7. Details 2-Column Grid
+      // Column 1 (x = 55)
+      ctx.fillStyle = '#94A6C2';
+      ctx.font = '700 12px Inter, sans-serif';
+      ctx.fillText('TIER', 55, 275);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 20px Inter, sans-serif';
+      ctx.fillText(currentPlanName || 'Gold', 55, 302);
+
+      ctx.fillStyle = '#94A6C2';
+      ctx.font = '700 12px Inter, sans-serif';
+      ctx.fillText('MEMBER SINCE', 55, 350);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 20px Inter, sans-serif';
+      ctx.fillText(memberSince, 55, 377);
+
+      // Active Pill Badge
+      drawRoundRect(ctx, 55, 412, 100, 32, 16);
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.4)';
+      ctx.stroke();
+
+      ctx.fillStyle = '#10B981';
+      ctx.beginPath();
+      ctx.arc(71, 428, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#6EE7B7';
+      ctx.font = 'bold 14px Inter, sans-serif';
+      ctx.fillText(membershipStatus, 82, 433);
+
+      // Vertical Divider
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(315, 260);
+      ctx.lineTo(315, 455);
+      ctx.stroke();
+
+      // Column 2 (x = 345)
+      ctx.fillStyle = '#94A6C2';
+      ctx.font = '700 12px Inter, sans-serif';
+      ctx.fillText(scopeLabel.toUpperCase(), 345, 275);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 20px Inter, sans-serif';
+      ctx.fillText(scopeValue, 345, 302);
+
+      ctx.fillStyle = '#94A6C2';
+      ctx.font = '700 12px Inter, sans-serif';
+      ctx.fillText('VALID UNTIL', 345, 350);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 20px Inter, sans-serif';
+      ctx.fillText(expiryDate, 345, 377);
+
+      // Member ID at bottom
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.font = '500 16px Inter, sans-serif';
+      ctx.fillText(`Member ID - ${memberId}`, 55, 515);
+
+      // 8. Right Side: White QR Card INSIDE the Wallet Card
+      const qrBoxX = 645;
+      const qrBoxY = 145;
+      const qrBoxSize = 295;
+      drawRoundRect(ctx, qrBoxX, qrBoxY, qrBoxSize, qrBoxSize, 22);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+
+      // Draw QR image
+      const qrPadding = 18;
+      ctx.drawImage(
+        qrImg,
+        qrBoxX + qrPadding,
+        qrBoxY + qrPadding,
+        qrBoxSize - qrPadding * 2,
+        qrBoxSize - qrPadding * 2
+      );
+
+      // Center 121 Meet badge in QR code
+      const centerBoxSize = 58;
+      const centerBoxX = qrBoxX + (qrBoxSize - centerBoxSize) / 2;
+      const centerBoxY = qrBoxY + (qrBoxSize - centerBoxSize) / 2;
+      drawRoundRect(ctx, centerBoxX, centerBoxY, centerBoxSize, centerBoxSize, 12);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.strokeStyle = '#E2E8F0';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      if (logoImg) {
+        ctx.drawImage(logoImg, centerBoxX + 8, centerBoxY + 8, 42, 42);
+      }
+
+      // 9. Export Blob and trigger download
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `digital-wallet-card-${memberId}.png`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          toast.success('Digital Membership Card downloaded successfully');
+        }
+      }, 'image/png');
+    } catch (err) {
+      console.error('Failed to export wallet card:', err);
       handleDownloadCertificate();
     }
   };
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 transition-colors duration-200">
-      {/* 1. Page Tabs Header matching app.html */}
-      <div className="bg-card text-card-foreground rounded-2xl border border-border overflow-hidden shadow-xs">
-        <div className="flex gap-2 px-4 pt-3 border-b border-gray-200/80 dark:border-[#26406A] flex-wrap">
-          <button
-            onClick={() => setActiveTab('membership')}
-            className={`px-4 py-2.5 text-sm font-semibold inline-flex items-center gap-2 -mb-px transition-colors duration-150 ${activeTab === 'membership'
-              ? 'text-[#0B2447] dark:text-[#60A5FA] border-b-2 border-[#0B2447] dark:border-[#60A5FA]'
-              : 'text-gray-500 dark:text-[#94A6C2] hover:text-gray-900 dark:hover:text-[#F1F5F9] border-b-2 border-transparent'
-              }`}
-          >
-            <Shield className="w-4 h-4" />
-            Membership
-          </button>
-          <button
-            onClick={() => setActiveTab('wallet')}
-            className={`px-4 py-2.5 text-sm font-semibold inline-flex items-center gap-2 -mb-px transition-colors duration-150 ${activeTab === 'wallet'
-              ? 'text-[#0B2447] dark:text-[#60A5FA] border-b-2 border-[#0B2447] dark:border-[#60A5FA]'
-              : 'text-gray-500 dark:text-[#94A6C2] hover:text-gray-900 dark:hover:text-[#F1F5F9] border-b-2 border-transparent'
-              }`}
-          >
-            <CreditCard className="w-4 h-4" />
-            Digital Wallet
-          </button>
-        </div>
+      {/* Page Header matching Image 2 */}
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-[#F1F5F9] tracking-tight">
+          My Membership
+        </h1>
+        <p className="text-sm text-gray-500 dark:text-[#94A6C2] mt-0.5">
+          Manage your membership, access your digital card, and see your benefits.
+        </p>
       </div>
 
-      {/* TAB 1: MEMBERSHIP DETAILS */}
-      {activeTab === 'membership' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Card 1: Membership Status (2 Columns) */}
-          <div className="bg-card text-card-foreground rounded-2xl border border-border p-6 shadow-xs md:col-span-2 flex flex-col justify-between">
+      {/* Top 2-Column Grid: Membership Status & Digital Wallet Side-by-Side */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-stretch">
+        {/* Left Column: Membership Status */}
+        <div className="bg-card text-card-foreground rounded-2xl border border-border p-5 sm:p-6 shadow-xs flex flex-col">
+          <div className="flex items-center justify-between pb-3.5 border-b border-gray-100 dark:border-[#26406A]">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-[#F1F5F9] tracking-tight">
+              Membership Status
+            </h3>
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+              {membershipStatus}
+            </span>
+          </div>
+
+          {/* 2x2 Grid */}
+          <div className="grid grid-cols-2 gap-y-3.5 gap-x-6 text-sm mt-3.5">
             <div>
-              <div className="flex items-center justify-between pb-4 border-b border-gray-100 dark:border-[#26406A]">
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-[#F1F5F9] tracking-tight">
-                    Membership Status
-                  </h3>
-                  <p className="text-xs text-gray-500 dark:text-[#94A6C2] mt-0.5">
-                    Your current standing and renewal preferences
-                  </p>
-                </div>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  {membershipStatus}
-                </span>
-              </div>
-
-              {/* Status 3-Col Attributes */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm mt-5">
-                <div className="p-3 rounded-xl bg-gray-50 dark:bg-[#1E3352]/50 border border-gray-100 dark:border-[#26406A]/50">
-                  <p className="text-xs font-medium text-gray-500 dark:text-[#94A6C2]">Active Plan</p>
-                  <p className="text-base font-bold text-gray-900 dark:text-[#F1F5F9] mt-1">
-                    {currentPlanName}
-                  </p>
-                </div>
-                <div className="p-3 rounded-xl bg-gray-50 dark:bg-[#1E3352]/50 border border-gray-100 dark:border-[#26406A]/50">
-                  <p className="text-xs font-medium text-gray-500 dark:text-[#94A6C2]">Expiry Date</p>
-                  <p className="text-base font-bold text-gray-900 dark:text-[#F1F5F9] mt-1">
-                    {expiryDate}
-                  </p>
-                </div>
-                <div className="p-3 rounded-xl bg-gray-50 dark:bg-[#1E3352]/50 border border-gray-100 dark:border-[#26406A]/50">
-                  <p className="text-xs font-medium text-gray-500 dark:text-[#94A6C2]">{scopeLabel}</p>
-                  <p className="text-base font-bold text-gray-900 dark:text-[#F1F5F9] mt-1 truncate">
-                    {scopeValue}
-                  </p>
-                </div>
-              </div>
+              <p className="text-xs font-medium text-gray-500 dark:text-[#94A6C2]">Plan</p>
+              <p className="text-base font-bold text-gray-900 dark:text-[#F1F5F9] mt-0.5">
+                {currentPlanName || 'Gold'}
+              </p>
             </div>
-
-            {/* Auto Renewal Alert Banner & Billing Action */}
-            <div className="mt-5 p-3.5 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <p className="text-xs sm:text-sm font-medium text-emerald-800 dark:text-emerald-300">
-                  Auto-renewal is active — your plan renews automatically on {expiryDate}.
-                </p>
-              </div>
+            <div>
+              <p className="text-xs font-medium text-gray-500 dark:text-[#94A6C2]">Expiry Date</p>
+              <p className="text-base font-bold text-gray-900 dark:text-[#F1F5F9] mt-0.5">
+                {expiryDate}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-gray-500 dark:text-[#94A6C2]">Member Since</p>
+              <p className="text-base font-bold text-gray-900 dark:text-[#F1F5F9] mt-0.5">
+                {memberSince}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-gray-500 dark:text-[#94A6C2]">{scopeLabel}</p>
+              <p className="text-base font-bold text-gray-900 dark:text-[#F1F5F9] mt-0.5 truncate">
+                {scopeValue}
+              </p>
             </div>
           </div>
 
-          {/* Card 2: Digital Certificate (1 Column, Navy Gradient) */}
-          <div
-            className="rounded-2xl p-6 text-center shadow-xs flex flex-col justify-between"
-            style={{ background: 'linear-gradient(135deg, #0B2447, #16385C)' }}
-          >
-            <div>
-              <p className="text-xs uppercase tracking-wider font-bold text-amber-400">
-                Digital Certificate
-              </p>
-              <h4 className="text-white font-bold text-lg mt-2 tracking-tight">{memberName}</h4>
-              <p className="text-white/70 text-xs mt-0.5">{businessName}</p>
+          {/* Auto-renewal banner */}
+          <div className="mt-3.5 p-3 rounded-xl flex items-center gap-3 bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/80">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <p className="text-xs sm:text-sm font-medium text-emerald-800 dark:text-emerald-300">
+              Auto-renewal is on — your plan renews automatically on {expiryDate}, no action needed.
+            </p>
+          </div>
 
-              {/* QR Box */}
-              <div className="w-24 h-24 mx-auto mt-4 rounded-xl p-2 bg-white flex items-center justify-center shadow-md overflow-hidden">
+          <div className="mt-3.5">
+            <Button
+              variant="outline"
+              onClick={handleDownloadCertificate}
+              className="text-xs sm:text-sm font-medium py-2 px-4 rounded-xl flex items-center gap-2 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+            >
+              <Receipt className="w-4 h-4 text-gray-500" />
+              Download PDF
+            </Button>
+          </div>
+        </div>
+
+        {/* Right Column: Digital Wallet */}
+        <div className="bg-card text-card-foreground rounded-2xl border border-border p-5 sm:p-6 shadow-xs flex flex-col">
+          {/* Header with Title on Left and Download Button on Top-Right */}
+          <div className="flex items-center justify-between pb-3.5 border-b border-gray-100 dark:border-[#26406A] gap-3">
+            <div className="min-w-0">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-[#F1F5F9] tracking-tight">
+                Digital Wallet
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-[#94A6C2] mt-0.5 truncate">
+                Your membership card — show QR code at venues
+              </p>
+            </div>
+            <Button
+              onClick={handleDownloadWalletCard}
+              className="bg-[#0B2447] hover:bg-[#16385C] text-white px-3.5 py-1.5 rounded-xl font-semibold text-xs shadow-xs inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" /> Download Card
+            </Button>
+          </div>
+
+          {/* Digital Wallet Card (Embedded QR inside) matching Status Card height with card-like max width */}
+          <div
+            className="mt-3.5 rounded-2xl p-3.5 sm:p-4 w-full max-w-[460px] mx-auto flex-1 flex flex-col justify-between relative text-white shadow-md overflow-hidden"
+            style={{ background: 'linear-gradient(135deg, #071E3D 0%, #0B2447 50%, #153965 100%)' }}
+          >
+            {/* Subtle background glow */}
+            <div className="absolute -right-12 -bottom-12 w-48 h-48 bg-blue-500/10 rounded-full blur-2xl pointer-events-none" />
+
+            {/* Card Header */}
+            <div className="flex items-center justify-between gap-3 relative z-10">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-white tracking-tight truncate">
+                  {chamberName}
+                </p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#A5C2EB] mt-0.5">
+                  {chamberAcronym} · DIGITAL MEMBERSHIP CARD
+                </p>
+              </div>
+              {/* 121 Meet Top-Right Badge */}
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white flex items-center justify-center p-1 shadow-sm shrink-0">
+                <img src={LOGO_SRC} alt="121 Meet" className="w-full h-full object-contain" />
+              </div>
+            </div>
+
+            {/* Card Body: Info on Left + QR Code INSIDE card on Right */}
+            <div className="flex flex-row items-center justify-between gap-3 mt-2 relative z-10">
+              {/* Left Side: Avatar, Name, 2-Col Stats */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  {profilePhoto ? (
+                    <img
+                      src={profilePhoto}
+                      alt={memberName}
+                      className="w-8 h-8 rounded-full object-cover shrink-0 border border-white/40"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 bg-[#071E3D] border border-white/40">
+                      {memberInitials}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm font-bold text-white truncate tracking-tight">
+                      {memberName}
+                    </p>
+                    <p className="text-[10px] text-[#CBD9EC] truncate">{memberEmail}</p>
+                  </div>
+                </div>
+
+                {/* 2-Column Stats Grid with vertical divider */}
+                <div className="grid grid-cols-2 gap-2 mt-2 pt-1.5 border-t border-white/10">
+                  <div>
+                    <p className="text-[9px] uppercase font-bold tracking-wider text-[#94A6C2]">
+                      TIER
+                    </p>
+                    <p className="text-xs font-bold text-white leading-tight">
+                      {currentPlanName || 'Gold'}
+                    </p>
+                    <p className="text-[9px] uppercase font-bold tracking-wider text-[#94A6C2] mt-1">
+                      MEMBER SINCE
+                    </p>
+                    <p className="text-xs font-bold text-white leading-tight">{memberSince}</p>
+                    <div className="mt-1">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                        <span className="w-1 h-1 rounded-full bg-emerald-400" />
+                        {membershipStatus}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="border-l border-white/15 pl-2">
+                    <p className="text-[9px] uppercase font-bold tracking-wider text-[#94A6C2]">
+                      {scopeLabel.toUpperCase()}
+                    </p>
+                    <p className="text-xs font-bold text-white leading-tight truncate">
+                      {scopeValue}
+                    </p>
+                    <p className="text-[9px] uppercase font-bold tracking-wider text-[#94A6C2] mt-1">
+                      VALID UNTIL
+                    </p>
+                    <p className="text-xs font-bold text-white leading-tight">{expiryDate}</p>
+                  </div>
+                </div>
+
+                <p className="text-[9px] sm:text-[10px] font-medium text-white/80 mt-1.5 tracking-wide">
+                  Member ID - {memberId}
+                </p>
+              </div>
+
+              {/* Right Side: QR Code Box INSIDE Wallet Card */}
+              <div className="bg-white rounded-xl p-1.5 shadow-sm flex items-center justify-center relative shrink-0">
                 {qrDataUrl ? (
                   <img
                     src={qrDataUrl}
                     alt={`QR code for ${memberId}`}
-                    className="w-full h-full object-contain"
+                    className="w-20 h-20 sm:w-22 sm:h-22 block object-contain rounded-md"
                   />
                 ) : (
-                  <QrCode className="w-20 h-20 text-[#0B2447]" />
+                  <div className="w-20 h-20 sm:w-22 sm:h-22 flex items-center justify-center bg-gray-50 rounded-md">
+                    <QrCode className="w-7 h-7 text-gray-300 animate-pulse" />
+                  </div>
                 )}
+                {/* Center 121 Meet logo mark inside QR code */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="w-5 h-5 rounded-sm bg-white p-0.5 shadow-xs border border-gray-100 flex items-center justify-center">
+                    <img src={LOGO_SRC} alt="121 Meet" className="w-full h-full object-contain" />
+                  </div>
+                </div>
               </div>
             </div>
-
-            <Button
-              onClick={handleDownloadCertificate}
-              className="w-full mt-5 bg-white text-[#0B2447] hover:bg-gray-100 font-semibold text-xs py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-xs"
-            >
-              <Download className="w-4 h-4" /> Download PDF
-            </Button>
           </div>
+        </div>
+      </div>
 
           {/* Card 3: Benefit Usage (3 Columns) */}
           <div className="bg-card text-card-foreground rounded-2xl border border-border p-6 shadow-xs md:col-span-3">
@@ -825,6 +1078,9 @@ Authentication Hash: 0x${Math.random().toString(16).slice(2, 10).toUpperCase()}
               </div>
             )}
           </div>
+
+          {/* Card 3.5: Team Representatives (3 Columns) */}
+          <TeamRepresentativesSection businessName={businessName} />
 
           {/* Card 4: Change Plan Grid (3 Columns) */}
           <div className="bg-card text-card-foreground rounded-2xl border border-border p-6 shadow-xs md:col-span-3">
@@ -1083,148 +1339,6 @@ Authentication Hash: 0x${Math.random().toString(16).slice(2, 10).toUpperCase()}
               </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* TAB 2: DIGITAL WALLET */}
-      {activeTab === 'wallet' && (
-        <div className="space-y-6">
-          <div className="bg-card text-card-foreground rounded-2xl border border-border p-6 shadow-xs">
-            <div className="flex items-center justify-between pb-4 border-b border-gray-100 dark:border-[#26406A]">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-[#F1F5F9] tracking-tight">
-                  Digital Wallet
-                </h3>
-                <p className="text-xs text-gray-500 dark:text-[#94A6C2] mt-0.5">
-                  Your official membership card — show this QR code at events and member-only venues.
-                </p>
-              </div>
-              <Button
-                variant="outline"
-                onClick={handleDownloadWalletCard}
-                className="text-xs flex items-center gap-1.5"
-              >
-                <Download className="w-4 h-4" /> Download Card
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start mt-6">
-              {/* Membership Card (2 Columns) */}
-              <div
-                className="lg:col-span-2 rounded-2xl overflow-hidden shadow-lg p-6 sm:p-8"
-                style={{ background: 'linear-gradient(135deg, #0B2447, #16385C)' }}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="text-white font-bold text-base truncate">{chamberName}</p>
-                    <p className="text-[10px] uppercase tracking-wider text-white/60 mt-0.5 font-medium">
-                      Official Digital Membership Pass
-                    </p>
-                  </div>
-                  <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-white shrink-0">
-                    <Shield className="w-5 h-5 text-amber-400" />
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4 mt-6">
-                  {profilePhoto ? (
-                    <img
-                      src={profilePhoto}
-                      alt={memberName}
-                      className="w-16 h-16 rounded-full object-cover shrink-0 border-2 border-white/40"
-                    />
-                  ) : (
-                    <div className="w-16 h-16 rounded-full flex items-center justify-center text-white text-xl font-bold shrink-0 bg-teal-600 border-2 border-white/40">
-                      {memberInitials}
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-white text-xl sm:text-2xl font-bold truncate">
-                      {memberName}
-                    </p>
-                    <p className="text-xs text-white/70 truncate">{memberEmail}</p>
-                    <p className="text-xs text-white/90 font-medium truncate mt-0.5">
-                      {businessName}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 mt-6 pt-4 border-t border-white/10">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-white/60 font-semibold">
-                      Tier
-                    </p>
-                    <p className="text-sm font-bold text-white mt-0.5">{currentPlanName}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-white/60 font-semibold">
-                      {scopeLabel}
-                    </p>
-                    <p className="text-sm font-bold text-white mt-0.5 truncate">{scopeValue}</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 mt-4">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-white/60 font-semibold">
-                      Member Since
-                    </p>
-                    <p className="text-sm font-bold text-white mt-0.5">{memberSince}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-white/60 font-semibold">
-                      Valid Until
-                    </p>
-                    <p className="text-sm font-bold text-white mt-0.5">{expiryDate}</p>
-                  </div>
-                </div>
-
-                <div className="mt-6 flex items-center justify-between">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    {membershipStatus}
-                  </span>
-                  <p className="text-[11px] text-white/60 font-mono tracking-wider">
-                    ID: {memberId}
-                  </p>
-                </div>
-              </div>
-
-              {/* QR Code Container (1 Column) */}
-              <div className="rounded-2xl p-6 bg-white dark:bg-[#1E3352] border border-gray-200 dark:border-[#26406A] flex flex-col items-center justify-center text-center shadow-xs">
-                <div className="relative p-2 bg-white rounded-xl shadow-xs border border-gray-100">
-                  {qrDataUrl ? (
-                    <img
-                      src={qrDataUrl}
-                      alt={`QR code for ${memberId}`}
-                      className="w-44 h-44 block object-contain"
-                    />
-                  ) : (
-                    <div className="w-44 h-44 flex items-center justify-center bg-gray-50">
-                      <QrCode className="w-12 h-12 text-gray-300 animate-pulse" />
-                    </div>
-                  )}
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="rounded-lg p-1.5 bg-white shadow-xs border border-gray-200">
-                      <Shield className="w-5 h-5 text-[#0B2447]" />
-                    </div>
-                  </div>
-                </div>
-                <p className="text-xs font-mono font-semibold text-gray-700 dark:text-[#CBD9EC] mt-3">
-                  {memberId}
-                </p>
-                <p className="text-[11px] text-gray-400 dark:text-[#94A6C2] mt-1">
-                  Scan at event registration or desk check-in
-                </p>
-              </div>
-            </div>
-
-            <p className="text-xs text-gray-500 dark:text-[#94A6C2] mt-6">
-              The QR code securely encodes your cryptographic membership credentials and can be scanned by chamber staff to instantly verify your active membership.
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* Upgrade / Downgrade Confirmation Dialog */}
       <Dialog open={isUpgradeModalOpen} onOpenChange={setIsUpgradeModalOpen}>

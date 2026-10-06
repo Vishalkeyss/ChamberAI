@@ -373,7 +373,16 @@ export const ChamberPublicPage: React.FC<ChamberPublicPageProps> = ({
             />
           </div>
         ) : activeTab === 'directory' ? (
-          <PublicDirectoryPage chamberName={chamber.name} chamberSlug={chamber.slug} />
+          <PublicDirectoryPage
+            chamberName={chamber.name}
+            chamberSlug={chamber.slug}
+            onNavigateToPlans={() => {
+              setActiveTab('plans');
+              if (typeof window !== 'undefined') {
+                window.history.pushState({}, '', '/plans');
+              }
+            }}
+          />
         ) : (
           <>
             {/* Dynamic GuestHome Hero Section */}

@@ -41,6 +41,7 @@ export const AddPaymentMethodModal: React.FC<AddPaymentMethodModalProps> = ({
 
     if (raw.startsWith('4')) setBrand('Visa');
     else if (raw.startsWith('5')) setBrand('Mastercard');
+    else if (/^(60|6521|6522|81|82|508)/.test(raw)) setBrand('RuPay');
     else if (raw.startsWith('34') || raw.startsWith('37')) setBrand('Amex');
     else if (raw.startsWith('6')) setBrand('Discover');
   };
@@ -123,15 +124,15 @@ export const AddPaymentMethodModal: React.FC<AddPaymentMethodModalProps> = ({
           {/* Card Brand selection */}
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold">Card Brand</Label>
-            <div className="grid grid-cols-4 gap-2">
-              {['Visa', 'Mastercard', 'Amex', 'Discover'].map((b) => (
+            <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+              {['Visa', 'Mastercard', 'RuPay', 'Amex', 'Discover'].map((b) => (
                 <button
                   type="button"
                   key={b}
                   onClick={() => setBrand(b)}
-                  className={`py-1.5 text-xs font-bold rounded-lg border transition-colors ${
+                  className={`py-1.5 px-1 text-xs font-bold rounded-lg border transition-colors ${
                     brand === b
-                      ? 'border-[#0B2447] bg-blue-50/50 text-[#0B2447] dark:border-blue-400 dark:bg-blue-950/40 dark:text-blue-300'
+                      ? 'border-[#0B2447] bg-blue-50/50 text-[#0B2447] dark:border-blue-400 dark:bg-blue-950/40 dark:text-blue-300 shadow-2xs'
                       : 'border-border text-muted-foreground hover:bg-muted'
                   }`}
                 >

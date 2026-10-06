@@ -90,6 +90,7 @@ export const ApplicationWizardPage: React.FC<ApplicationWizardPageProps> = ({
   const [cardData, setCardData] = useState<CardFormData>({
     cardholderName: '',
     cardNumber: '',
+    brand: 'Visa',
     expiry: '',
     cvc: '',
   });
@@ -359,7 +360,7 @@ export const ApplicationWizardPage: React.FC<ApplicationWizardPageProps> = ({
       paymentMethodPayload = {
         type: 'card' as const,
         cardholderName: cardData.cardholderName.trim() || fullName.trim(),
-        brand: detectCardBrand(cardDigits),
+        brand: cardData.brand || detectCardBrand(cardDigits),
         lastFour: cardDigits.slice(-4),
         expiryMonth: mm,
         expiryYear: fullYear,
