@@ -1,0 +1,40 @@
+name: Test Atlassian MCP Authentication
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Verify Atlassian MCP authentication
+        env:
+          ATLASSIAN_MCP_API_KEY: ${{ secrets.ATLASSIAN_MCP_API_KEY }}
+        shell: bash
+        run: |
+          set +x
+
+          if [ -z "$ATLASSIAN_MCP_API_KEY" ]; then
+            echo "ERROR: ATLASSIAN_MCP_API_KEY secret is missing."
+            exit 1
+          fi
+
+          STATUS=$(curl -sS -o /dev/null \
+            -w "%{http_code}" \
+            --max-time 30 \
+            -H "Authorization: Bearer ${ATLASSIAN_MCP_API_KEY}" \
+            https://mcp.atlassian.com/v2/mcp)
+
+          echo "Atlassian MCP HTTP status: $STATUS"
+
+          if [ "$STATUS" = "200" ]; then
+            echo "PASS: Endpoint returned HTTP 200."
+          else
+            echo "Authentication test failed or endpoint requires an MCP protocol request."
+            exit 1
+          fi
