@@ -7,6 +7,7 @@ import {
 import { cn } from '@/lib/utils';
 import { DirectoryFilterBar } from '../components/DirectoryFilterBar';
 import { BusinessCard } from '../components/BusinessCard';
+import { PublicBusinessCard } from '../components/PublicBusinessCard';
 import { ViewProfileModal } from '../components/ViewProfileModal';
 import { GuestJoinModal } from '../components/GuestJoinModal';
 import { QuickMessageModal } from '../components/QuickMessageModal';
@@ -161,12 +162,15 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
           Member & Business Directory
         </h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Search and connect with verified chamber members.
+          {mode === 'public'
+            ? 'Browse verified local businesses'
+            : 'Search and connect with verified chamber members.'}
         </p>
       </div>
 
       {/* Filter Card */}
       <DirectoryFilterBar
+        mode={mode}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         selectedIndustry={selectedIndustry}
@@ -179,12 +183,14 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
         onClearFilters={handleClearFilters}
       />
 
-      {/* Results Header: Count */}
-      <div className="mt-7 mb-4 flex items-center justify-between">
-        <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
-          <span className="font-semibold text-gray-900 dark:text-white">{meta.total}</span> members found
-        </p>
-      </div>
+      {/* Results Header: Count (Member mode only) */}
+      {mode === 'member' && (
+        <div className="mt-7 mb-4 flex items-center justify-between">
+          <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
+            <span className="font-semibold text-gray-900 dark:text-white">{meta.total}</span> members found
+          </p>
+        </div>
+      )}
 
       {/* Directory Listings (Grid View) */}
       {loading ? (
@@ -237,16 +243,24 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
       ) : (
         /* Grid View (Default - 3 columns) */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {businesses.map((biz) => (
-            <BusinessCard
-              key={biz.id}
-              business={biz}
-              isMember={isMemberMode}
-              onSendMessage={handleSendMessage}
-              onBookMeeting={handleBookMeeting}
-              onViewProfile={handleViewProfile}
-            />
-          ))}
+          {businesses.map((biz) =>
+            mode === 'public' ? (
+              <PublicBusinessCard
+                key={biz.id}
+                business={biz}
+                onViewProfile={handleViewProfile}
+              />
+            ) : (
+              <BusinessCard
+                key={biz.id}
+                business={biz}
+                isMember={isMemberMode}
+                onSendMessage={handleSendMessage}
+                onBookMeeting={handleBookMeeting}
+                onViewProfile={handleViewProfile}
+              />
+            )
+          )}
         </div>
       )}
 

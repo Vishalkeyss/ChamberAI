@@ -80,20 +80,92 @@ export class BusinessProfilesRepository {
 
     if (fallbackProfile.length > 0) {
       const biz = fallbackProfile[0];
-      // Auto-link primary membership record if missing
-      const memberId = generatePrefixedId('bm');
       const now = new Date().toISOString();
-      await db.insert(businessMembers).values({
-        id: memberId,
-        chamberId,
-        businessId: biz.id,
-        userId,
-        accessLevel: 'full_access',
-        isPrimaryContact: 1,
-        status: 'active',
-        createdAt: now,
-        updatedAt: now,
-      });
+
+      // Check whether this user already has any membership row for this business
+      const [existingLink] = await db
+        .select()
+        .from(businessMembers)
+        .where(
+          and(
+            eq(businessMembers.chamberId, chamberId),
+            eq(businessMembers.businessId, biz.id),
+            eq(businessMembers.userId, userId)
+          )
+        )
+        .limit(1);
+
+      if (existingLink) {
+        return { business: biz, membership: existingLink };
+      }
+
+      // Determine whether there is already a primary contact for this business
+      const [existingPrimary] = await db
+        .select()
+        .from(businessMembers)
+        .where(
+          and(
+            eq(businessMembers.chamberId, chamberId),
+            eq(businessMembers.businessId, biz.id),
+            eq(businessMembers.isPrimaryContact, 1)
+          )
+        )
+        .limit(1);
+
+      const memberId = generatePrefixedId('bm');
+      const shouldBePrimary = !existingPrimary ? 1 : 0;
+
+      try {
+        await db.insert(businessMembers).values({
+          id: memberId,
+          chamberId,
+          businessId: biz.id,
+          userId,
+          accessLevel: 'full_access',
+          isPrimaryContact: shouldBePrimary,
+          status: 'active',
+          createdAt: now,
+          updatedAt: now,
+        });
+      } catch (insertErr: any) {
+        // Unique constraint on (business_id) WHERE is_primary_contact = 1
+        // can race between concurrent requests. Re-query for any existing row.
+        const [raceRow] = await db
+          .select()
+          .from(businessMembers)
+          .where(
+            and(
+              eq(businessMembers.chamberId, chamberId),
+              eq(businessMembers.businessId, biz.id),
+              eq(businessMembers.userId, userId)
+            )
+          )
+          .limit(1);
+
+        if (raceRow) {
+          return { business: biz, membership: raceRow };
+        }
+
+        // Last resort: insert without primary contact flag
+        const fallbackId = generatePrefixedId('bm');
+        await db.insert(businessMembers).values({
+          id: fallbackId,
+          chamberId,
+          businessId: biz.id,
+          userId,
+          accessLevel: 'full_access',
+          isPrimaryContact: 0,
+          status: 'active',
+          createdAt: now,
+          updatedAt: now,
+        });
+        const [fallbackLinked] = await db
+          .select()
+          .from(businessMembers)
+          .where(eq(businessMembers.id, fallbackId))
+          .limit(1);
+        return { business: biz, membership: fallbackLinked };
+      }
 
       const [linked] = await db
         .select()

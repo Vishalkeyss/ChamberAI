@@ -82,8 +82,11 @@
 ---
 
 ### Phase 04: Events, Ticketing, Sponsorships & Day-Of Check-In
-- [ ] **Prompt 04.1**: Events Listing, Interactive Calendar View & Filtering Engine `[⏳ PENDING]`
-- [ ] **Prompt 04.2**: Admin 9-Tab Event Details & Scoped Sub-Admin View `[⏳ PENDING]`
+- [x] **Prompt 04.1**: Events Listing, Interactive Calendar View & Filtering Engine `[✅ COMPLETED]`
+- [x] **Prompt 04.2**: Admin 9-Tab Event Details & Scoped Sub-Admin View `[✅ COMPLETED]`
+  - *Backend Files:* `backend/src/db/schema/event-registrations.schema.ts`, `backend/src/db/schema/event-feedback.schema.ts`, `backend/src/db/schema/event-sponsors.schema.ts`, `backend/src/modules/events/routes/admin-events-tabs.routes.ts`, `backend/src/modules/events/repositories/event-registrations.repository.ts`, `backend/src/test/admin-events-tabs.test.ts`
+  - *Frontend Files:* `frontend/src/features/admin/events/services/admin-events.api.ts`, `frontend/src/features/admin/events/pages/AdminEventDetailPage.tsx`, `frontend/src/features/admin/events/pages/AdminEventsListPage.tsx`, `frontend/src/features/admin/events/components/tabs/OverviewTab.tsx`, `frontend/src/features/admin/events/components/tabs/AttendeesTab.tsx`, `frontend/src/features/admin/events/components/tabs/WaitlistTab.tsx`, `frontend/src/features/admin/events/components/tabs/FeedbackTab.tsx`, `frontend/src/features/admin/events/components/tabs/SponsorsTab.tsx`, `frontend/src/App.tsx`
+  - *Status:* Completed & Validated (9-tab operations console `/admin/events/:id`, URL `?tab=` sync, Attendees search & live check-in toggle, Waitlist priority queue promotion, feedback/CSAT rating, chapter/group admin scoped security with 403 enforcement, 108 backend tests passing, frontend Vite production bundle built).
 - [ ] **Prompt 04.3**: Member & Guest Event Registration, Promo Codes & Payment Checkout Modal `[⏳ PENDING]`
 - [ ] **Prompt 04.4**: Event Sponsorship Packages & Member Self-Service Booking `[⏳ PENDING]`
 - [ ] **Prompt 04.5**: Post-Event Member Feedback & Attendance Certificates Engine `[⏳ PENDING]`

@@ -13,7 +13,7 @@ export const PublicDirectoryPage: React.FC<PublicDirectoryPageProps> = ({
   onNavigateToPlans,
 }) => {
   return (
-    <div className='w-full max-w-7xl ml-auto mr-auto px-4 py-6'>
+    <div className="px-8 py-14 max-w-7xl mx-auto w-full">
       <DirectoryPage
         mode="public"
         chamberName={chamberName}

@@ -22,9 +22,9 @@ const allowedRoles = ['member', 'full_admin', 'billing_admin', 'chapter_admin', 
  */
 memberDirectoryRouter.get('/directory', requireRole(allowedRoles), async (c) => {
   const chamberId = c.get('chamberId');
-  const session = c.get('session') as any;
+  const session = c.get('session');
   const user = c.get('user');
-  const userRoles = (c.get('userRoles') as any) || session?.roles || [];
+  const userRoles = session?.roles || [];
   const requestId = c.get('requestId');
 
   if (!chamberId || !user) {
@@ -45,7 +45,7 @@ memberDirectoryRouter.get('/directory', requireRole(allowedRoles), async (c) => 
 
   // Scoped read access for chapter_admin (unless also full_admin or super_admin)
   let scopedChapterId: string | null = null;
-  const highestRole = user.highest_role || user.highestRole;
+  const highestRole = user.highest_role;
   const isSuperAdmin = highestRole === 'super_admin';
   const isFullAdmin =
     highestRole === 'full_admin' ||

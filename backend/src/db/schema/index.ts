@@ -5,3 +5,8 @@ export * from './users.schema';
 export * from './chamber-memberships.schema';
 export * from './chapters.schema';
 export * from './membership-plans.schema';
+export * from './events.schema';
+export * from './event-ticket-types.schema';
+export * from './event-registrations.schema';
+export * from './event-feedback.schema';
+export * from './event-sponsors.schema';

@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import type { DirectoryFilters } from '../services/directory.api';
 
 interface DirectoryFilterBarProps {
+  mode?: 'public' | 'member';
   searchQuery: string;
   onSearchChange: (value: string) => void;
   selectedIndustry: string;
@@ -47,6 +48,7 @@ const PLAN_OPTIONS = [
 ];
 
 export const DirectoryFilterBar: React.FC<DirectoryFilterBarProps> = ({
+  mode = 'member',
   searchQuery,
   onSearchChange,
   selectedIndustry,
@@ -65,6 +67,26 @@ export const DirectoryFilterBar: React.FC<DirectoryFilterBarProps> = ({
       ...DEFAULT_INDUSTRIES,
     ])
   );
+
+  if (mode === 'public') {
+    return (
+      <div className="max-w-xl mb-6">
+        <div className="relative">
+          <Search
+            size={18}
+            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+          />
+          <input
+            type="text"
+            placeholder="Search businesses by name, category or city…"
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className="w-full h-11 pl-10 pr-4 rounded-xl border border-gray-200 dark:border-border bg-white dark:bg-card text-sm text-gray-900 dark:text-foreground placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0B1E3B]/20 focus:border-[#0B1E3B] transition shadow-2xs"
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white dark:bg-card rounded-2xl border border-gray-200/90 dark:border-border p-5 shadow-2xs">

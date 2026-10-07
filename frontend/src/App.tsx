@@ -38,6 +38,43 @@ import { MemberBillingPage } from './features/billing/pages/MemberBillingPage';
 import { EditBusinessProfileModal } from './features/member/components/EditBusinessProfileModal';
 import { fetchBusinessProfile } from './features/member/services/business-profile.api';
 import { DirectoryPage } from './features/directory/pages/DirectoryPage';
+import { EventsExplorerPage } from './features/events/pages/EventsExplorerPage';
+import { AdminEventDetailPage } from './features/admin/events/pages/AdminEventDetailPage';
+import { AdminEventsListPage } from './features/admin/events/pages/AdminEventsListPage';
+
+export type MemberViewType = 'overview' | 'plans' | 'billing' | 'directory' | 'events';
+
+const MEMBER_VIEW_ALIAS_MAP: Record<string, MemberViewType> = {
+  membership: 'plans',
+  wallet: 'plans',
+  team: 'plans',
+  plans: 'plans',
+  billing: 'billing',
+  directory: 'directory',
+  events: 'events',
+  overview: 'overview',
+};
+
+/**
+ * Dynamically resolves the member sub-view from any URL pathname
+ * e.g. /portal/events -> 'events', /member/billing -> 'billing', /portal -> 'overview'
+ */
+export function resolveMemberView(pathname: string): MemberViewType {
+  const clean = pathname.split('?')[0].split('#')[0];
+  const segment = clean.replace(/^\/(?:portal|member)\/?/, '').split('/')[0]?.toLowerCase();
+  if (!segment) return 'overview';
+  return MEMBER_VIEW_ALIAS_MAP[segment] || (segment as MemberViewType) || 'overview';
+}
+
+/**
+ * Dynamically resolves the admin sub-view from any URL pathname
+ * e.g. /admin/plans -> 'plans', /admin/applications -> 'applications'
+ */
+export function resolveAdminView(pathname: string): string {
+  const clean = pathname.split('?')[0].split('#')[0];
+  const sub = clean.replace(/^\/admin\/?/, '').split('/')[0]?.toLowerCase();
+  return sub || 'dashboard';
+}
 
 type ActiveShell =
   | 'public'
@@ -115,14 +152,20 @@ function AppContent() {
     return '/admin/onboarding';
   });
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
-  const [isEditBusinessProfileOpen, setIsEditBusinessProfileOpen] = useState(false);
-  const [memberView, setMemberView] = useState<'overview' | 'plans' | 'billing' | 'directory'>(() => {
+  const [selectedAdminEventId, setSelectedAdminEventId] = useState<string | null>(() => {
     if (typeof window !== 'undefined') {
       const p = window.location.pathname;
-      if (p === '/portal/billing' || p === '/billing') return 'billing';
-      if (p === '/portal/membership' || p === '/portal/wallet' || p === '/membership' || p === '/portal/team') return 'plans';
-      if (p === '/portal/directory' || p === '/directory') return 'directory';
-      if (p.startsWith('/portal') || p.startsWith('/member')) return 'overview';
+      if (p.startsWith('/admin/events/')) {
+        const id = p.replace(/^\/admin\/events\//, '').split('/')[0].split('?')[0];
+        return id || null;
+      }
+    }
+    return null;
+  });
+  const [isEditBusinessProfileOpen, setIsEditBusinessProfileOpen] = useState(false);
+  const [memberView, setMemberView] = useState<MemberViewType>(() => {
+    if (typeof window !== 'undefined') {
+      return resolveMemberView(window.location.pathname);
     }
     return 'overview';
   });
@@ -195,9 +238,20 @@ function AppContent() {
         setIsEditBusinessProfileOpen(true);
         setMemberView('overview');
         window.history.replaceState({}, '', '/portal/overview');
-      } else if (path === '/portal/team' || path === '/member/team') {
-        setMemberView('plans');
-        window.history.replaceState({}, '', '/portal/membership');
+      } else if (path.startsWith('/portal') || path.startsWith('/member')) {
+        setMemberView(resolveMemberView(path));
+      } else if (path.startsWith('/admin')) {
+        setAdminPath(path);
+        if (path.startsWith('/admin/events/')) {
+          const id = path.replace(/^\/admin\/events\//, '').split('/')[0].split('?')[0];
+          setSelectedAdminEventId(id || null);
+          setAdminView('event-detail');
+        } else if (path === '/admin/events' || path === '/admin/events/') {
+          setSelectedAdminEventId(null);
+          setAdminView('events');
+        } else {
+          setAdminView(resolveAdminView(path));
+        }
       } else if (path.startsWith('/verify/member/')) {
         const parts = path.split('/').filter(Boolean);
         if (parts.length >= 3) {
@@ -335,11 +389,7 @@ function AppContent() {
         if (['full_admin', 'billing_admin', 'group_admin', 'chapter_admin'].includes(highestRole || '')) {
           setActiveShell('admin');
           if (pathname.startsWith('/admin/')) {
-            const sub = pathname.replace(/^\/admin\//, '').replace(/\/$/, '');
-            if (sub === 'plans') setAdminView('plans');
-            else if (sub === 'applications') setAdminView('applications');
-            else if (sub === 'dashboard') setAdminView('dashboard');
-            else if (sub) setAdminView(sub);
+            setAdminView(resolveAdminView(pathname));
             setAdminPath(pathname);
           }
         } else {
@@ -363,13 +413,7 @@ function AppContent() {
             setAiStage('landing');
           } else {
             setAiStage('traditional');
-            if (pathname === '/portal/billing' || pathname === '/billing') {
-              setMemberView('billing');
-            } else if (pathname === '/portal/membership' || pathname === '/portal/wallet' || pathname === '/membership') {
-              setMemberView('plans');
-            } else {
-              setMemberView('overview');
-            }
+            setMemberView(resolveMemberView(pathname));
           }
         }
       } else if (pathname === '/settings' || pathname === '/portal/settings' || pathname === '/admin/settings') {
@@ -399,12 +443,7 @@ function AppContent() {
         setActiveShell('admin');
         setAiStage('traditional');
         if (pathname.startsWith('/admin/')) {
-          const sub = pathname.replace(/^\/admin\//, '').replace(/\/$/, '');
-          if (sub === 'plans') setAdminView('plans');
-          else if (sub === 'applications') setAdminView('applications');
-          else if (sub === 'dashboard') setAdminView('dashboard');
-          else if (sub === 'onboarding') setAdminView('onboarding');
-          else if (sub) setAdminView(sub);
+          setAdminView(resolveAdminView(pathname));
           setAdminPath(pathname);
         }
       } else if (pathname.startsWith('/super-admin') || pathname.startsWith('/super')) {
@@ -419,13 +458,7 @@ function AppContent() {
           setAiStage('landing');
         } else {
           setAiStage('traditional');
-          if (pathname === '/portal/billing' || pathname === '/billing') {
-            setMemberView('billing');
-          } else if (pathname === '/portal/membership' || pathname === '/portal/wallet' || pathname === '/membership') {
-            setMemberView('plans');
-          } else {
-            setMemberView('overview');
-          }
+          setMemberView(resolveMemberView(pathname));
         }
       } else if (pathname === '/settings' || pathname === '/portal/settings' || pathname === '/admin/settings') {
         setActiveShell('settings');
@@ -815,24 +848,20 @@ function AppContent() {
                   ? '/portal/billing'
                   : memberView === 'directory'
                   ? '/portal/directory'
+                  : memberView === 'events'
+                  ? '/portal/events'
                   : '/portal/overview'
               }
               onNavigate={(path) => {
                 if (typeof window !== 'undefined') {
                   window.history.pushState({}, '', path);
                 }
-                if (path === '/portal/membership' || path === '/portal/wallet' || path === '/portal/team' || path === '/member/team') {
-                  setMemberView('plans');
-                } else if (path === '/portal/billing') {
-                  setMemberView('billing');
-                } else if (path === '/portal/directory' || path === '/directory') {
-                  setMemberView('directory');
-                } else if (path === '/portal/business-profile' || path === '/member/business-profile') {
+                if (path === '/portal/business-profile' || path === '/member/business-profile') {
                   setIsEditBusinessProfileOpen(true);
                   setMemberView('overview');
                   if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/overview');
                 } else {
-                  setMemberView('overview');
+                  setMemberView(resolveMemberView(path));
                 }
               }}
             >
@@ -857,6 +886,10 @@ function AppContent() {
                     if (id === 'directory') {
                       setMemberView('directory');
                       if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/directory');
+                    }
+                    if (id === 'events') {
+                      setMemberView('events');
+                      if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/events');
                     }
                     if (id === 'business-profile' || id === 'profile') {
                       setIsEditBusinessProfileOpen(true);
@@ -884,6 +917,16 @@ function AppContent() {
                     if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/membership');
                   }}
                 />
+              ) : memberView === 'events' ? (
+                <EventsExplorerPage
+                  mode="member"
+                  chamberName={resolvedChamberName}
+                  chamberSlug={resolvedChamberSlug}
+                  onNavigateToPlans={() => {
+                    setMemberView('plans');
+                    if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/membership');
+                  }}
+                />
               ) : (
                 <MemberOverviewPage
                   onNavigateSection={(id) => {
@@ -902,6 +945,10 @@ function AppContent() {
                     if (id === 'directory') {
                       setMemberView('directory');
                       if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/directory');
+                    }
+                    if (id === 'events') {
+                      setMemberView('events');
+                      if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/events');
                     }
                     if (id === 'business-profile' || id === 'profile') {
                       setIsEditBusinessProfileOpen(true);
@@ -970,6 +1017,13 @@ function AppContent() {
                   setAdminView('plans');
                 } else if (path === '/admin/applications') {
                   setAdminView('applications');
+                } else if (path === '/admin/events' || path === '/admin/events/') {
+                  setSelectedAdminEventId(null);
+                  setAdminView('events');
+                } else if (path.startsWith('/admin/events/')) {
+                  const id = path.replace(/^\/admin\/events\//, '').split('/')[0].split('?')[0];
+                  setSelectedAdminEventId(id || null);
+                  setAdminView('event-detail');
                 } else if (path === '/admin/dashboard') {
                   setAdminView('dashboard');
                 } else if (path === '/admin/onboarding') {
@@ -1001,6 +1055,31 @@ function AppContent() {
               ) : adminView === 'applications' ? (
                 <AdminApplicationsPage
                   chamberSlug={resolvedChamberSlug}
+                />
+              ) : adminView === 'events' ? (
+                <AdminEventsListPage
+                  chamberSlug={resolvedChamberSlug}
+                  onSelectEvent={(eventId) => {
+                    setSelectedAdminEventId(eventId);
+                    setAdminPath(`/admin/events/${eventId}`);
+                    setAdminView('event-detail');
+                    if (typeof window !== 'undefined') {
+                      window.history.pushState({}, '', `/admin/events/${eventId}`);
+                    }
+                  }}
+                />
+              ) : adminView === 'event-detail' && selectedAdminEventId ? (
+                <AdminEventDetailPage
+                  eventId={selectedAdminEventId}
+                  chamberSlug={resolvedChamberSlug}
+                  onNavigateBack={() => {
+                    setSelectedAdminEventId(null);
+                    setAdminPath('/admin/events');
+                    setAdminView('events');
+                    if (typeof window !== 'undefined') {
+                      window.history.pushState({}, '', '/admin/events');
+                    }
+                  }}
                 />
               ) : adminView === 'new-plan' || adminView === 'edit-plan' ? (
                 <AdminPlanBuilderPage
@@ -1055,14 +1134,29 @@ function AppContent() {
                       </CardContent>
                     </Card>
 
-                    <Card>
+                    <Card
+                      onClick={() => {
+                        setAdminPath('/admin/events');
+                        setSelectedAdminEventId(null);
+                        setAdminView('events');
+                        if (typeof window !== 'undefined') {
+                          window.history.pushState({}, '', '/admin/events');
+                        }
+                      }}
+                      className="cursor-pointer transition-all hover:border-primary/50 hover:shadow-md"
+                    >
                       <CardHeader>
-                        <CardTitle className="text-lg">Active Events</CardTitle>
+                        <CardTitle className="text-lg flex items-center justify-between">
+                          <span>Active Events</span>
+                          <Badge variant="outline" className="text-xs bg-primary/5 text-primary border-primary/20">
+                            Prompt 04.2
+                          </Badge>
+                        </CardTitle>
                         <CardDescription>Published and registration open</CardDescription>
                       </CardHeader>
                       <CardContent>
                         <p className="text-3xl font-extrabold text-foreground">8</p>
-                        <p className="text-xs text-primary font-medium mt-1">426 tickets booked this week</p>
+                        <p className="text-xs text-primary font-medium mt-1">Manage 9-tab event consoles →</p>
                       </CardContent>
                     </Card>
                   </div>

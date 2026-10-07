@@ -15,6 +15,7 @@ import LOGO_SRC from '@/assets/logo.png';
 import { MemberLoginModal } from '@/features/auth/components/MemberLoginModal';
 import { PublicPricingPage } from '@/features/membership/pages/PublicPricingPage';
 import { PublicDirectoryPage } from './PublicDirectoryPage';
+import { EventsExplorerPage } from '@/features/events/pages/EventsExplorerPage';
 import { cn } from '@/lib/utils';
 
 export interface ChamberPublicPageProps {
@@ -383,6 +384,20 @@ export const ChamberPublicPage: React.FC<ChamberPublicPageProps> = ({
               }
             }}
           />
+        ) : activeTab === 'events' ? (
+          <div className="px-8 py-14 max-w-7xl mx-auto w-full">
+            <EventsExplorerPage
+              mode="public"
+              chamberName={chamber.name}
+              chamberSlug={chamber.slug}
+              onNavigateToPlans={() => {
+                setActiveTab('plans');
+                if (typeof window !== 'undefined') {
+                  window.history.pushState({}, '', '/plans');
+                }
+              }}
+            />
+          </div>
         ) : (
           <>
             {/* Dynamic GuestHome Hero Section */}

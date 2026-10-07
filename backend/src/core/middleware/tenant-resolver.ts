@@ -10,6 +10,10 @@ export function extractSubdomain(host: string, rootDomain = '121meet.ai'): strin
     const subdomain = cleanHost.slice(0, -(rootDomain.length + 1));
     return subdomain.includes('.') ? null : subdomain;
   }
+  if (cleanHost.endsWith('.localhost')) {
+    const subdomain = cleanHost.slice(0, -('.localhost'.length));
+    return subdomain.includes('.') ? null : subdomain;
+  }
   return null;
 }
 
