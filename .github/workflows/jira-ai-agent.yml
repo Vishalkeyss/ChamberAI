@@ -32,10 +32,15 @@ jobs:
             exit 1
           fi
 
-          echo "Installing MCP client..."
-          npm install --no-save @modelcontextprotocol/client
+          MCP_DIR="${RUNNER_TEMP}/mcp-jira-client"
+          mkdir -p "$MCP_DIR"
+          cd "$MCP_DIR"
 
-          cat > /tmp/search-jira.mjs <<'NODE'
+          echo "Installing MCP client..."
+          npm init -y >/dev/null 2>&1
+          npm install @modelcontextprotocol/client
+
+          cat > "$MCP_DIR/search-jira.mjs" <<'NODE'
           import {
             Client,
             StreamableHTTPClientTransport
@@ -152,7 +157,7 @@ jobs:
           }
           NODE
 
-          node /tmp/search-jira.mjs
+          node "$MCP_DIR/search-jira.mjs"
 
           echo ""
           echo "======================================"
