@@ -132,25 +132,64 @@ jobs:
             });
 
             const textParts = (result.content ?? [])
-              .filter((item) => item.type === "text")
-              .map((item) => item.text);
-
-            console.log("");
-            console.log("======================================");
-            console.log("          JIRA SEARCH RESULT");
-            console.log("======================================");
-
-            console.log(textParts.join("\n"));
+            .filter((item) => item.type === "text")
+            .map((item) => item.text);
 
             if (result.isError) {
-              console.error("MCP returned an error.");
-              process.exit(1);
+            console.error("MCP returned an error.");
+            process.exit(1);
             }
 
+            const rawResponse = textParts.join("\n").trim();
+
+            let response;
+
+            try {
+            response = JSON.parse(rawResponse);
+            } catch (error) {
+            console.error("ERROR: MCP returned invalid JSON.");
+            console.error(rawResponse);
+            process.exit(1);
+            }
+
+            const issues = response?.data?.issues ?? [];
+
             console.log("");
+            console.log("======================================");
+            console.log("          JIRA TASK SEARCH");
+            console.log("======================================");
+
+            console.log(`Tasks found: ${issues.length}`);
+
+            if (issues.length === 0) {
+            console.log("");
+            console.log("No ai-ready Jira tasks are currently waiting.");
+            console.log("Workflow will exit without making any code changes.");
+            process.exit(0);
+            }
+
+            const issue = issues[0];
+
+            console.log("");
+            console.log("======================================");
+            console.log("            JIRA TASK FOUND");
+            console.log("======================================");
+
+            console.log(`Issue: ${issue.key ?? "unknown"}`);
+            console.log(`Summary: ${issue.fields?.summary ?? "unknown"}`);
+            console.log(`Status: ${issue.fields?.status?.name ?? "unknown"}`);
             console.log(
-              "SUCCESS: Jira search completed through Atlassian MCP."
+            `Labels: ${(issue.fields?.labels ?? []).join(", ") || "none"}`
             );
+
+            console.log("");
+            console.log("Description:");
+            console.log(issue.fields?.description ?? "No description");
+
+            console.log("");
+            console.log("======================================");
+            console.log("       READY FOR PROCESSING");
+            console.log("======================================");
 
           } finally {
             await client.close().catch(() => {});
