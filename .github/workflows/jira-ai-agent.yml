@@ -131,28 +131,32 @@ jobs:
               }
             });
 
-            const textParts = (result.content ?? [])
-            .filter((item) => item.type === "text")
-            .map((item) => item.text);
-
             if (result.isError) {
-            console.error("MCP returned an error.");
-            process.exit(1);
+              console.error("MCP returned an error.");
+              process.exit(1);
             }
 
-            const rawResponse = textParts.join("\n").trim();
+            const jsonPart = (result.content ?? []).find(
+              (item) => item.type === "text" && item.text.trim().startsWith("{")
+            );
+
+            if (!jsonPart) {
+              console.error("ERROR: No JSON payload found in MCP response.");
+              console.error(JSON.stringify(result.content, null, 2));
+              process.exit(1);
+            }
 
             let response;
 
             try {
-            response = JSON.parse(rawResponse);
+              response = JSON.parse(jsonPart.text);
             } catch (error) {
-            console.error("ERROR: MCP returned invalid JSON.");
-            console.error(rawResponse);
-            process.exit(1);
+              console.error("ERROR: MCP returned invalid JSON.");
+              console.error(jsonPart.text);
+              process.exit(1);
             }
 
-            const issues = response?.data?.issues ?? [];
+            const issues = response?.issues ?? response?.data?.issues ?? [];
 
             console.log("");
             console.log("======================================");
