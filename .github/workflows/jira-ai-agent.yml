@@ -72,6 +72,8 @@ jobs:
             StreamableHTTPClientTransport
           } from "@modelcontextprotocol/client";
 
+          import fs from "node:fs";
+
           const token = process.env.ATLASSIAN_MCP_API_KEY;
           const cloudId = process.env.JIRA_CLOUD_ID;
           const repo = process.env.REPO;
@@ -470,17 +472,17 @@ jobs:
                 "utf8"
               ).toString("base64");
 
-            require("node:fs").appendFileSync(
+            fs.appendFileSync(
               output,
               `issue_key=${issueKey}\n`
             );
 
-            require("node:fs").appendFileSync(
+            fs.appendFileSync(
               output,
               `summary_b64=${summaryBase64}\n`
             );
 
-            require("node:fs").appendFileSync(
+            fs.appendFileSync(
               output,
               `description_b64=${descriptionBase64}\n`
             );
