@@ -1,0 +1,64 @@
+name: Jira AI Agent
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  detect-jira-task:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check Jira for AI-ready tasks
+        env:
+          ATLASSIAN_MCP_API_KEY: ${{ secrets.ATLASSIAN_MCP_API_KEY }}
+        shell: bash
+        run: |
+          set -e
+
+          echo "======================================"
+          echo " Jira AI Agent - Task Detection"
+          echo "======================================"
+
+          if [ -z "$ATLASSIAN_MCP_API_KEY" ]; then
+            echo "ERROR: ATLASSIAN_MCP_API_KEY secret is missing."
+            exit 1
+          fi
+
+          echo ""
+          echo "Checking Atlassian MCP..."
+
+          STATUS=$(curl -sS \
+            -o /tmp/mcp-response \
+            -w "%{http_code}" \
+            --max-time 30 \
+            -H "Authorization: Bearer ${ATLASSIAN_MCP_API_KEY}" \
+            https://mcp.atlassian.com/v2/mcp)
+
+          echo "Atlassian MCP HTTP status: $STATUS"
+
+          if [ "$STATUS" != "200" ]; then
+            echo "ERROR: Atlassian MCP authentication failed."
+            cat /tmp/mcp-response || true
+            exit 1
+          fi
+
+          echo ""
+          echo "SUCCESS: Atlassian MCP is reachable."
+          echo ""
+          echo "Next step:"
+          echo "Search Jira project KAN for issues with:"
+          echo "  label = ai-ready"
+          echo "  status = To Do"
+          echo ""
+          echo "The AI implementation step will be added after"
+          echo "Jira task detection is verified."
+          echo ""
+          echo "======================================"
+          echo " Detection workflow completed"
+          echo "======================================"
