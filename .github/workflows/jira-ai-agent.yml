@@ -11,26 +11,150 @@ permissions:
 jobs:
   detect-jira-task:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
 
     steps:
-      - name: Start Jira AI Agent
+      - name: Search Jira through Atlassian Rovo MCP
+        env:
+          ATLASSIAN_MCP_API_KEY: ${{ secrets.ATLASSIAN_MCP_API_KEY }}
+          JIRA_CLOUD_ID: "79478d62-55e6-4f8a-9774-9ca35ff386c3"
+        shell: bash
         run: |
+          set -euo pipefail
+
           echo "======================================"
-          echo "       JIRA AI AGENT STARTED"
+          echo "      JIRA AI AGENT - JIRA SEARCH"
           echo "======================================"
           echo ""
-          echo "Runner: GitHub Actions Ubuntu"
-          echo "Repository: Vishalkeyss/ChamberAI"
-          echo "Base branch: vishal_test"
-          echo "AI branch: ai-agent"
-          echo ""
-          echo "Checking for Jira tasks..."
-          echo ""
-          echo "Jira project: KAN"
-          echo "Required label: ai-ready"
-          echo "Required status: To Do"
+
+          if [ -z "${ATLASSIAN_MCP_API_KEY:-}" ]; then
+            echo "ERROR: ATLASSIAN_MCP_API_KEY secret is missing."
+            exit 1
+          fi
+
+          echo "Installing MCP client..."
+          npm install --no-save @modelcontextprotocol/client
+
+          cat > /tmp/search-jira.mjs <<'NODE'
+          import {
+            Client,
+            StreamableHTTPClientTransport
+          } from "@modelcontextprotocol/client";
+
+          const url = new URL("https://mcp.atlassian.com/v2/mcp");
+          const token = process.env.ATLASSIAN_MCP_API_KEY;
+          const cloudId = process.env.JIRA_CLOUD_ID;
+
+          const client = new Client(
+            {
+              name: "github-actions-jira-agent",
+              version: "1.0.0"
+            },
+            {
+              versionNegotiation: {
+                mode: "auto"
+              }
+            }
+          );
+
+          const transport = new StreamableHTTPClientTransport(url, {
+            requestInit: {
+              headers: {
+                Authorization: `Bearer ${token}`
+              }
+            }
+          });
+
+          try {
+            console.log("Connecting to Atlassian Rovo MCP...");
+
+            await client.connect(transport);
+
+            console.log("MCP connected.");
+
+            console.log(
+              "Protocol:",
+              client.getNegotiatedProtocolVersion?.() ?? "unknown"
+            );
+
+            const tools = await client.listTools();
+
+            const searchTool = tools.tools.find(
+              (tool) => tool.name === "searchJiraIssuesUsingJql"
+            );
+
+            if (!searchTool) {
+              console.error(
+                "ERROR: searchJiraIssuesUsingJql was not exposed by MCP."
+              );
+
+              console.error(
+                "Available tools:",
+                tools.tools.map((tool) => tool.name).join(", ")
+              );
+
+              process.exit(1);
+            }
+
+            console.log(
+              "Found MCP tool: searchJiraIssuesUsingJql"
+            );
+
+            const result = await client.callTool({
+              name: "searchJiraIssuesUsingJql",
+
+              arguments: {
+                cloudId,
+
+                jql:
+                  'project = KAN AND labels = "ai-ready" AND status = "To Do" ORDER BY created ASC',
+
+                searchResultMode: "issues",
+
+                maxResults: 10,
+
+                fields: [
+                  "summary",
+                  "status",
+                  "labels",
+                  "description"
+                ],
+
+                responseContentFormat: "markdown",
+
+                view: "evidence"
+              }
+            });
+
+            const textParts = (result.content ?? [])
+              .filter((item) => item.type === "text")
+              .map((item) => item.text);
+
+            console.log("");
+            console.log("======================================");
+            console.log("          JIRA SEARCH RESULT");
+            console.log("======================================");
+
+            console.log(textParts.join("\n"));
+
+            if (result.isError) {
+              console.error("MCP returned an error.");
+              process.exit(1);
+            }
+
+            console.log("");
+            console.log(
+              "SUCCESS: Jira search completed through Atlassian MCP."
+            );
+
+          } finally {
+            await client.close().catch(() => {});
+          }
+          NODE
+
+          node /tmp/search-jira.mjs
+
           echo ""
           echo "======================================"
-          echo "       JIRA CHECK COMPLETED"
+          echo "       JIRA SEARCH COMPLETED"
           echo "======================================"
