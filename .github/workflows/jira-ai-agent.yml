@@ -6,33 +6,50 @@ on:
     - cron: "*/5 * * * *"
 
 permissions:
-  contents: read
-  pull-requests: read
+  contents: write
+  pull-requests: write
 
 concurrency:
   group: jira-ai-agent
   cancel-in-progress: false
 
 jobs:
-  detect-jira-task:
+  jira-ai-agent:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 60
 
     steps:
+
       # ============================================================
-      # STEP 1: SEARCH JIRA
+      # 1. CHECKOUT REPOSITORY
       # ============================================================
-      - name: Search Jira through Atlassian Rovo MCP
-        id: jira-search
+
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+
+      # ============================================================
+      # 2. FIND JIRA TASK + CHECK WHETHER AI AGENT IS BUSY
+      # ============================================================
+
+      - name: Fetch Jira task and prepare agent
+        id: prepare
         env:
           ATLASSIAN_MCP_API_KEY: ${{ secrets.ATLASSIAN_MCP_API_KEY }}
           JIRA_CLOUD_ID: "79478d62-55e6-4f8a-9774-9ca35ff386c3"
+          GH_TOKEN: ${{ github.token }}
+          REPO: "Vishalkeyss/ChamberAI"
+          BASE_BRANCH: "vishal_test"
+          AI_BRANCH: "ai-agent"
         shell: bash
         run: |
           set -euo pipefail
 
           echo "======================================"
-          echo "      JIRA AI AGENT - JIRA SEARCH"
+          echo "          JIRA AI AGENT"
           echo "======================================"
           echo ""
 
@@ -46,25 +63,24 @@ jobs:
           mkdir -p "$MCP_DIR"
           cd "$MCP_DIR"
 
-          echo "Installing MCP client..."
-
           npm init -y >/dev/null 2>&1
-          npm install @modelcontextprotocol/client
+          npm install @modelcontextprotocol/client >/dev/null 2>&1
 
-          cat > "$MCP_DIR/search-jira.mjs" <<'NODE'
+          cat > "$MCP_DIR/jira.mjs" <<'NODE'
           import {
             Client,
             StreamableHTTPClientTransport
           } from "@modelcontextprotocol/client";
 
-          const url = new URL("https://mcp.atlassian.com/v2/mcp");
-
           const token = process.env.ATLASSIAN_MCP_API_KEY;
           const cloudId = process.env.JIRA_CLOUD_ID;
+          const repo = process.env.REPO;
+          const baseBranch = process.env.BASE_BRANCH;
+          const aiBranch = process.env.AI_BRANCH;
 
           const client = new Client(
             {
-              name: "github-actions-jira-agent",
+              name: "github-actions-jira-ai-agent",
               version: "1.0.0"
             },
             {
@@ -74,52 +90,68 @@ jobs:
             }
           );
 
-          const transport = new StreamableHTTPClientTransport(url, {
-            requestInit: {
-              headers: {
-                Authorization: `Bearer ${token}`
+          const transport = new StreamableHTTPClientTransport(
+            new URL("https://mcp.atlassian.com/v2/mcp"),
+            {
+              requestInit: {
+                headers: {
+                  Authorization: `Bearer ${token}`
+                }
               }
             }
-          });
+          );
 
-          try {
-            console.log("Connecting to Atlassian Rovo MCP...");
-
-            await client.connect(transport);
-
-            console.log("MCP connected.");
-
-            console.log(
-              "Protocol:",
-              client.getNegotiatedProtocolVersion?.() ?? "unknown"
+          async function githubRequest(path, options = {}) {
+            const response = await fetch(
+              `https://api.github.com${path}`,
+              {
+                ...options,
+                headers: {
+                  Accept: "application/vnd.github+json",
+                  Authorization: `Bearer ${process.env.GH_TOKEN}`,
+                  "X-GitHub-Api-Version": "2022-11-28",
+                  ...(options.headers || {})
+                }
+              }
             );
+
+            return response;
+          }
+
+          async function main() {
+            await client.connect(transport);
 
             const tools = await client.listTools();
 
             const searchTool = tools.tools.find(
-              (tool) => tool.name === "searchJiraIssuesUsingJql"
+              tool => tool.name === "searchJiraIssuesUsingJql"
+            );
+
+            const transitionTool = tools.tools.find(
+              tool => tool.name === "transitionJiraIssue"
             );
 
             if (!searchTool) {
-              console.error(
-                "ERROR: searchJiraIssuesUsingJql was not exposed by MCP."
+              throw new Error(
+                "searchJiraIssuesUsingJql is unavailable."
               );
-
-              console.error(
-                "Available tools:",
-                tools.tools.map((tool) => tool.name).join(", ")
-              );
-
-              process.exit(1);
             }
 
-            console.log(
-              "Found MCP tool: searchJiraIssuesUsingJql"
-            );
+            if (!transitionTool) {
+              throw new Error(
+                "transitionJiraIssue is unavailable."
+              );
+            }
 
-            const result = await client.callTool({
+            // --------------------------------------------------------
+            // SEARCH JIRA
+            // --------------------------------------------------------
+
+            console.log("");
+            console.log("Searching Jira...");
+
+            const searchResult = await client.callTool({
               name: "searchJiraIssuesUsingJql",
-
               arguments: {
                 cloudId,
 
@@ -143,262 +175,1053 @@ jobs:
               }
             });
 
-            if (result.isError) {
-              console.error("MCP returned an error.");
-              process.exit(1);
+            if (searchResult.isError) {
+              throw new Error("Jira search failed.");
             }
 
-            const jsonPart = (result.content ?? []).find(
-              (item) =>
+            const jsonPart = (searchResult.content ?? []).find(
+              item =>
                 item.type === "text" &&
+                item.text &&
                 item.text.trim().startsWith("{")
             );
 
             if (!jsonPart) {
-              console.error(
-                "ERROR: No JSON payload found in MCP response."
+              throw new Error(
+                "No JSON payload returned by Jira MCP."
               );
-
-              console.error(
-                JSON.stringify(result.content, null, 2)
-              );
-
-              process.exit(1);
             }
 
-            let response;
-
-            try {
-              response = JSON.parse(jsonPart.text);
-            } catch (error) {
-              console.error(
-                "ERROR: MCP returned invalid JSON."
-              );
-
-              console.error(jsonPart.text);
-
-              process.exit(1);
-            }
+            const response = JSON.parse(jsonPart.text);
 
             const issues =
               response?.issues ??
               response?.data?.issues ??
               [];
 
-            console.log("");
-            console.log("======================================");
-            console.log("          JIRA TASK SEARCH");
-            console.log("======================================");
+            console.log(
+              `Tasks found: ${issues.length}`
+            );
 
-            console.log(`Tasks found: ${issues.length}`);
-
-            # --------------------------------------------------------
-            # NO TASK FOUND
-            # --------------------------------------------------------
             if (issues.length === 0) {
-              console.log("");
               console.log(
-                "No ai-ready Jira tasks are currently waiting."
+                "No ai-ready Jira tasks waiting."
               );
-
-              console.log(
-                "Workflow will exit without making any code changes."
-              );
-
-              const fs = await import("node:fs");
-
-              fs.appendFileSync(
-                process.env.GITHUB_OUTPUT,
-                "task_found=false\n"
-              );
-
-              process.exit(0);
+              return;
             }
 
-            # --------------------------------------------------------
-            # TASK FOUND
-            # --------------------------------------------------------
             const issue = issues[0];
 
-            if (!issue.key) {
-              console.error(
-                "ERROR: Jira issue key is missing."
+            const issueKey = issue.key;
+
+            const summary =
+              issue.fields?.summary ??
+              "Unknown";
+
+            const description =
+              typeof issue.fields?.description === "string"
+                ? issue.fields.description
+                : JSON.stringify(
+                    issue.fields?.description ?? "No description",
+                    null,
+                    2
+                  );
+
+            console.log("");
+            console.log("======================================");
+            console.log("             TASK SELECTED");
+            console.log("======================================");
+            console.log(`Issue: ${issueKey}`);
+            console.log(`Summary: ${summary}`);
+            console.log("");
+
+            // --------------------------------------------------------
+            // CHECK WHETHER AI AGENT ALREADY HAS AN OPEN PR
+            // --------------------------------------------------------
+
+            console.log(
+              "Checking whether AI agent is busy..."
+            );
+
+            const prResponse = await githubRequest(
+              `/repos/${repo}/pulls?state=open&base=${encodeURIComponent(
+                baseBranch
+              )}&head=Vishalkeyss:${encodeURIComponent(
+                aiBranch
+              )}&per_page=10`
+            );
+
+            if (!prResponse.ok) {
+              throw new Error(
+                `GitHub PR lookup failed: ${prResponse.status}`
+              );
+            }
+
+            const prs = await prResponse.json();
+
+            if (Array.isArray(prs) && prs.length > 0) {
+              console.log("");
+              console.log("======================================");
+              console.log("          AI AGENT IS BUSY");
+              console.log("======================================");
+
+              for (const pr of prs) {
+                console.log(
+                  `PR #${pr.number}: ${pr.title}`
+                );
+                console.log(pr.html_url);
+              }
+
+              console.log("");
+              console.log(
+                "Leaving Jira task in To Do."
+              );
+              console.log(
+                "It will be picked up after the current PR is merged."
               );
 
-              process.exit(1);
+              return;
+            }
+
+            console.log("");
+            console.log("AI agent is free.");
+
+            // --------------------------------------------------------
+            // GET CURRENT BASE BRANCH SHA
+            // --------------------------------------------------------
+
+            console.log(
+              `Checking ${baseBranch}...`
+            );
+
+            const baseResponse = await githubRequest(
+              `/repos/${repo}/git/ref/heads/${encodeURIComponent(
+                baseBranch
+              )}`
+            );
+
+            if (!baseResponse.ok) {
+              throw new Error(
+                `Could not find ${baseBranch}: ${baseResponse.status}`
+              );
+            }
+
+            const baseData = await baseResponse.json();
+
+            const baseSha = baseData.object.sha;
+
+            console.log(
+              `${baseBranch} SHA: ${baseSha}`
+            );
+
+            // --------------------------------------------------------
+            // CREATE OR RESET AI BRANCH
+            //
+            // ai-agent is an automation-owned permanent branch.
+            // Since there is no open PR, it is safe to synchronize it
+            // to the latest vishal_test before starting a new task.
+            // --------------------------------------------------------
+
+            const aiResponse = await githubRequest(
+              `/repos/${repo}/git/ref/heads/${encodeURIComponent(
+                aiBranch
+              )}`
+            );
+
+            if (aiResponse.status === 404) {
+              console.log(
+                `${aiBranch} does not exist.`
+              );
+
+              console.log(
+                `Creating ${aiBranch} from ${baseBranch}...`
+              );
+
+              const createResponse = await githubRequest(
+                `/repos/${repo}/git/refs`,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json"
+                  },
+                  body: JSON.stringify({
+                    ref: `refs/heads/${aiBranch}`,
+                    sha: baseSha
+                  })
+                }
+              );
+
+              if (!createResponse.ok) {
+                const errorText =
+                  await createResponse.text();
+
+                throw new Error(
+                  `Failed to create ${aiBranch}: ${createResponse.status} ${errorText}`
+                );
+              }
+
+              console.log(
+                `${aiBranch} created successfully.`
+              );
+            } else if (!aiResponse.ok) {
+              throw new Error(
+                `Could not inspect ${aiBranch}: ${aiResponse.status}`
+              );
+            } else {
+              const aiData = await aiResponse.json();
+
+              const aiSha = aiData.object.sha;
+
+              console.log(
+                `${aiBranch} current SHA: ${aiSha}`
+              );
+
+              if (aiSha !== baseSha) {
+                console.log(
+                  `${aiBranch} is not at ${baseBranch}.`
+                );
+
+                console.log(
+                  `Synchronizing ${aiBranch} → ${baseBranch}...`
+                );
+
+                const updateResponse = await githubRequest(
+                  `/repos/${repo}/git/refs/heads/${encodeURIComponent(
+                    aiBranch
+                  )}`,
+                  {
+                    method: "PATCH",
+                    headers: {
+                      "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                      sha: baseSha,
+                      force: true
+                    })
+                  }
+                );
+
+                if (!updateResponse.ok) {
+                  const errorText =
+                    await updateResponse.text();
+
+                  throw new Error(
+                    `Failed to synchronize ${aiBranch}: ${updateResponse.status} ${errorText}`
+                  );
+                }
+
+                console.log(
+                  `${aiBranch} synchronized successfully.`
+                );
+              } else {
+                console.log(
+                  `${aiBranch} is already synchronized.`
+                );
+              }
+            }
+
+            // --------------------------------------------------------
+            // MOVE JIRA → IN PROGRESS
+            // --------------------------------------------------------
+
+            console.log("");
+            console.log(
+              `Moving ${issueKey} → In Progress...`
+            );
+
+            const transitionResult =
+              await client.callTool({
+                name: "transitionJiraIssue",
+
+                arguments: {
+                  cloudId,
+
+                  issueIdOrKey: issueKey,
+
+                  transitionId: "21"
+                }
+              });
+
+            if (transitionResult.isError) {
+              throw new Error(
+                "Failed to move Jira issue to In Progress."
+              );
             }
 
             console.log(
-              `Processing Jira issue: ${issue.key}`
+              `${issueKey} moved to In Progress.`
             );
 
-            const fs = await import("node:fs");
+            // --------------------------------------------------------
+            // OUTPUT DATA TO GITHUB ACTIONS
+            // --------------------------------------------------------
 
-            fs.appendFileSync(
-              process.env.GITHUB_OUTPUT,
-              `issue_key=${issue.key}\n`
+            const output = process.env.GITHUB_OUTPUT;
+
+            const summaryBase64 =
+              Buffer.from(
+                summary,
+                "utf8"
+              ).toString("base64");
+
+            const descriptionBase64 =
+              Buffer.from(
+                description,
+                "utf8"
+              ).toString("base64");
+
+            require("node:fs").appendFileSync(
+              output,
+              `issue_key=${issueKey}\n`
             );
 
-            fs.appendFileSync(
-              process.env.GITHUB_OUTPUT,
-              "task_found=true\n"
+            require("node:fs").appendFileSync(
+              output,
+              `summary_b64=${summaryBase64}\n`
             );
 
-            console.log("");
-            console.log("======================================");
-            console.log("            JIRA TASK FOUND");
-            console.log("======================================");
-
-            console.log(
-              `Issue: ${issue.key ?? "unknown"}`
-            );
-
-            console.log(
-              `Summary: ${
-                issue.fields?.summary ?? "unknown"
-              }`
-            );
-
-            console.log(
-              `Status: ${
-                issue.fields?.status?.name ?? "unknown"
-              }`
-            );
-
-            console.log(
-              `Labels: ${
-                (issue.fields?.labels ?? []).join(", ") ||
-                "none"
-              }`
-            );
-
-            console.log("");
-            console.log("Description:");
-
-            console.log(
-              issue.fields?.description ??
-              "No description"
+            require("node:fs").appendFileSync(
+              output,
+              `description_b64=${descriptionBase64}\n`
             );
 
             console.log("");
             console.log("======================================");
-            console.log("       READY FOR PROCESSING");
+            console.log("        TASK LOCKED FOR AI");
             console.log("======================================");
+            console.log(`Issue: ${issueKey}`);
+            console.log("Jira status: In Progress");
+            console.log(`AI branch: ${aiBranch}`);
+          }
 
+          try {
+            await main();
           } finally {
             await client.close().catch(() => {});
           }
           NODE
 
-          node "$MCP_DIR/search-jira.mjs"
+          node "$MCP_DIR/jira.mjs"
+
+
+      # ============================================================
+      # 3. CHECKOUT + CLEAN AI BRANCH
+      # ============================================================
+
+      - name: Checkout ai-agent
+        if: steps.prepare.outputs.issue_key != ''
+        run: |
+          set -euo pipefail
+
+          echo "Preparing ai-agent workspace..."
+
+          git fetch origin --prune
+
+          git checkout -B ai-agent origin/ai-agent
+
+          git reset --hard origin/vishal_test
+
+          git clean -fd
 
           echo ""
-          echo "======================================"
-          echo "       JIRA SEARCH COMPLETED"
-          echo "======================================"
+          echo "ai-agent is now based on vishal_test."
+
 
       # ============================================================
-      # STEP 2: CHECK AI AGENT BRANCH LOCK
+      # 4. CREATE CODEX TASK FILE
+      #
+      # IMPORTANT:
+      # This happens AFTER git clean -fd so .ai-task.md is not deleted.
       # ============================================================
-      - name: Check AI agent branch lock
-        id: branch-lock
-        if: steps.jira-search.outputs.task_found == 'true'
+
+      - name: Create Codex task instructions
+        if: steps.prepare.outputs.issue_key != ''
         env:
-          GH_TOKEN: ${{ github.token }}
-          ISSUE_KEY: ${{ steps.jira-search.outputs.issue_key }}
+          ISSUE_KEY: ${{ steps.prepare.outputs.issue_key }}
+          SUMMARY_B64: ${{ steps.prepare.outputs.summary_b64 }}
+          DESCRIPTION_B64: ${{ steps.prepare.outputs.description_b64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SUMMARY="$(printf '%s' "$SUMMARY_B64" | base64 --decode)"
+          DESCRIPTION="$(printf '%s' "$DESCRIPTION_B64" | base64 --decode)"
+
+          cat > .ai-task.md <<EOF
+          # Jira Task
+
+          Issue: ${ISSUE_KEY}
+
+          ## Summary
+
+          ${SUMMARY}
+
+          ## Description
+
+          ${DESCRIPTION}
+
+          ## Instructions
+
+          You are the coding agent responsible for implementing this Jira task.
+
+          BEFORE changing any code:
+
+          1. Read AGENTS.md completely.
+          2. Inspect the existing project structure.
+          3. Identify the exact files, components, services, APIs, database areas, and tests affected.
+          4. Understand existing implementation patterns.
+          5. Do not invent requirements that are not present in the Jira task or existing project conventions.
+
+          IMPLEMENTATION RULES:
+
+          - Implement the Jira task completely.
+          - Implement only what the Jira task requires.
+          - Preserve all existing functionality.
+          - Do not perform unrelated refactors.
+          - Follow the existing architecture and coding conventions.
+          - Reuse existing components, utilities, services, and patterns where appropriate.
+          - Do not introduce unnecessary dependencies.
+          - Respect authentication and authorization.
+          - Respect RBAC.
+          - Respect tenant isolation and multi-tenant architecture.
+          - Do not hardcode secrets, credentials, tokens, or environment-specific values.
+          - Do not modify main.
+          - Do not modify vishal_test.
+          - Work only on the ai-agent branch.
+          - Do not create another branch.
+
+          VALIDATION:
+
+          - Run relevant tests.
+          - Run linting if available.
+          - Run relevant build commands if available.
+          - Run type-checking if available.
+          - If a test, build, lint, or type-check failure is caused by your changes, fix it.
+          - Do not hide, skip, or ignore failures.
+          - Do not remove tests merely to make the task pass.
+
+          GIT RULES:
+
+          - Do NOT commit changes.
+          - Do NOT push changes.
+          - GitHub Actions will commit and push the completed implementation after you finish.
+
+          FINAL RESPONSE:
+
+          Report:
+
+          - What was changed.
+          - Files changed.
+          - Tests executed.
+          - Build/lint/type-check commands executed.
+          - Results.
+          - Any important implementation notes.
+          - Any remaining issue that could not be resolved.
+
+          Do not include unnecessary commentary.
+          EOF
+
+          echo ""
+          echo "Codex task file created."
+          echo ""
+          echo "Task:"
+          echo "  $ISSUE_KEY"
+          echo "Summary:"
+          echo "  $SUMMARY"
+
+
+      # ============================================================
+      # 5. RUN OPENAI CODEX
+      # ============================================================
+
+      - name: Run OpenAI Codex
+        if: steps.prepare.outputs.issue_key != ''
+        id: codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          permission-profile: ":workspace"
+          safety-strategy: "drop-sudo"
+          working-directory: ${{ github.workspace }}
+          output-file: codex-output.md
+          prompt-file: .ai-task.md
+
+
+      # ============================================================
+      # 6. PREPARE PR BODY + REMOVE AGENT FILES
+      # ============================================================
+
+      - name: Prepare PR body
+        if: steps.prepare.outputs.issue_key != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Preparing PR information..."
+
+          if [ -f codex-output.md ]; then
+            cp codex-output.md "$RUNNER_TEMP/pr-body.md"
+          else
+            cat > "$RUNNER_TEMP/pr-body.md" <<'EOF'
+          AI agent completed the implementation.
+
+          See the commit changes and workflow logs for validation details.
+          EOF
+          fi
+
+          # These files are workflow-only and must never be committed.
+          rm -f .ai-task.md
+          rm -f codex-output.md
+
+          echo "PR body prepared."
+
+
+      # ============================================================
+      # 7. VERIFY IMPLEMENTATION
+      # ============================================================
+
+      - name: Verify implementation
+        if: steps.prepare.outputs.issue_key != ''
         shell: bash
         run: |
           set -euo pipefail
 
           echo "======================================"
-          echo "       AI AGENT BRANCH LOCK"
+          echo "       VERIFYING AI IMPLEMENTATION"
           echo "======================================"
           echo ""
 
-          echo "Jira issue: $ISSUE_KEY"
+          git status --short
+
+          if git diff --quiet && \
+             git diff --cached --quiet; then
+
+            echo ""
+            echo "ERROR: AI agent produced no tracked code changes."
+            exit 1
+          fi
+
           echo ""
-          echo "Checking:"
-          echo "  Head: ai-agent"
-          echo "  Base: vishal_test"
+          echo "Changes detected."
+
+
+      # ============================================================
+      # 8. COMMIT + PUSH AI BRANCH
+      # ============================================================
+
+      - name: Commit and push ai-agent
+        if: steps.prepare.outputs.issue_key != ''
+        env:
+          ISSUE_KEY: ${{ steps.prepare.outputs.issue_key }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "ERROR: No staged changes to commit."
+            exit 1
+          fi
+
+          git commit \
+            -m "feat(ai-agent): implement ${ISSUE_KEY}"
+
+          git push origin ai-agent
+
           echo ""
+          echo "ai-agent pushed successfully."
 
-          PR_RESPONSE=$(curl -sS \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/Vishalkeyss/ChamberAI/pulls?state=open&base=vishal_test&head=Vishalkeyss:ai-agent&per_page=10")
 
-          PR_COUNT=$(echo "$PR_RESPONSE" | jq 'length')
+      # ============================================================
+      # 9. CREATE PULL REQUEST
+      # ============================================================
 
-          echo "Open AI agent PRs: $PR_COUNT"
+      - name: Create pull request
+        if: steps.prepare.outputs.issue_key != ''
+        id: create-pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_KEY: ${{ steps.prepare.outputs.issue_key }}
+        shell: bash
+        run: |
+          set -euo pipefail
 
-          if [ "$PR_COUNT" -gt 0 ]; then
-            echo ""
-            echo "======================================"
-            echo "          AI AGENT IS BUSY"
-            echo "======================================"
-            echo ""
+          echo "Creating pull request..."
 
-            echo "An open ai-agent → vishal_test PR already exists."
+          EXISTING_PR=$(gh pr list \
+            --repo Vishalkeyss/ChamberAI \
+            --head ai-agent \
+            --base vishal_test \
+            --state open \
+            --json number,url \
+            --jq '.[0]')
 
-            echo "The new Jira task will NOT be processed."
+          if [ -n "$EXISTING_PR" ]; then
+            echo "Existing PR found:"
+            echo "$EXISTING_PR"
 
-            echo ""
-            echo "Existing PR(s):"
+            PR_URL=$(echo "$EXISTING_PR" | jq -r '.url')
 
-            echo "$PR_RESPONSE" | jq -r \
-              '.[] | "PR #\(.number): \(.title) - \(.html_url)"'
-
-            echo ""
+            echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
 
             exit 0
           fi
 
-          echo ""
-          echo "======================================"
-          echo "          AI AGENT IS FREE"
-          echo "======================================"
-          echo ""
-
-          echo "No open ai-agent → vishal_test PR found."
-
-          echo "Task can proceed."
+          PR_URL=$(gh pr create \
+            --repo Vishalkeyss/ChamberAI \
+            --base vishal_test \
+            --head ai-agent \
+            --title "${ISSUE_KEY}: AI implementation" \
+            --body-file "$RUNNER_TEMP/pr-body.md")
 
           echo ""
+          echo "PR created:"
+          echo "$PR_URL"
 
-          echo "Branch lock passed successfully."
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+
 
       # ============================================================
-      # STEP 3: PHASE 3 COMPLETE
+      # 10. UPDATE JIRA → IN REVIEW + ADD PR COMMENT
       # ============================================================
-      - name: Phase 3 checkpoint
-        if: steps.jira-search.outputs.task_found == 'true'
+
+      - name: Update Jira
+        if: steps.prepare.outputs.issue_key != ''
         env:
-          ISSUE_KEY: ${{ steps.jira-search.outputs.issue_key }}
+          ATLASSIAN_MCP_API_KEY: ${{ secrets.ATLASSIAN_MCP_API_KEY }}
+          JIRA_CLOUD_ID: "79478d62-55e6-4f8a-9774-9ca35ff386c3"
+          ISSUE_KEY: ${{ steps.prepare.outputs.issue_key }}
+          PR_URL: ${{ steps.create-pr.outputs.pr_url }}
         shell: bash
+        run: |
+          set -euo pipefail
+
+          MCP_DIR="${RUNNER_TEMP}/mcp-jira-update"
+
+          mkdir -p "$MCP_DIR"
+          cd "$MCP_DIR"
+
+          npm init -y >/dev/null 2>&1
+          npm install @modelcontextprotocol/client >/dev/null 2>&1
+
+          cat > "$MCP_DIR/update.mjs" <<'NODE'
+          import {
+            Client,
+            StreamableHTTPClientTransport
+          } from "@modelcontextprotocol/client";
+
+          const token =
+            process.env.ATLASSIAN_MCP_API_KEY;
+
+          const cloudId =
+            process.env.JIRA_CLOUD_ID;
+
+          const issueKey =
+            process.env.ISSUE_KEY;
+
+          const prUrl =
+            process.env.PR_URL;
+
+          const client = new Client(
+            {
+              name: "github-actions-jira-updater",
+              version: "1.0.0"
+            },
+            {
+              versionNegotiation: {
+                mode: "auto"
+              }
+            }
+          );
+
+          const transport =
+            new StreamableHTTPClientTransport(
+              new URL(
+                "https://mcp.atlassian.com/v2/mcp"
+              ),
+              {
+                requestInit: {
+                  headers: {
+                    Authorization:
+                      `Bearer ${token}`
+                  }
+                }
+              }
+            );
+
+          async function main() {
+            await client.connect(transport);
+
+            const tools =
+              await client.listTools();
+
+            const transitionTool =
+              tools.tools.find(
+                tool =>
+                  tool.name ===
+                  "transitionJiraIssue"
+              );
+
+            const commentTool =
+              tools.tools.find(
+                tool =>
+                  tool.name ===
+                  "addCommentToJiraIssue"
+              );
+
+            if (!transitionTool) {
+              throw new Error(
+                "transitionJiraIssue unavailable."
+              );
+            }
+
+            // ------------------------------------------------------
+            // ADD PR COMMENT
+            // ------------------------------------------------------
+
+            if (commentTool) {
+              const schema =
+                commentTool.inputSchema ?? {};
+
+              const properties =
+                schema.properties ?? {};
+
+              let commentField = null;
+
+              if (
+                properties.commentBody
+              ) {
+                commentField =
+                  "commentBody";
+              } else if (
+                properties.body
+              ) {
+                commentField =
+                  "body";
+              } else if (
+                properties.comment
+              ) {
+                commentField =
+                  "comment";
+              }
+
+              if (commentField) {
+                const commentArguments = {
+                  cloudId,
+                  issueIdOrKey: issueKey
+                };
+
+                commentArguments[commentField] =
+                  `AI implementation completed.\n\nPull Request:\n${prUrl}`;
+
+                const commentResult =
+                  await client.callTool({
+                    name:
+                      "addCommentToJiraIssue",
+                    arguments:
+                      commentArguments
+                  });
+
+                if (
+                  commentResult.isError
+                ) {
+                  console.log(
+                    "Warning: Jira PR comment failed."
+                  );
+                } else {
+                  console.log(
+                    "PR URL added to Jira."
+                  );
+                }
+              } else {
+                console.log(
+                  "Warning: Could not determine Jira comment field."
+                );
+              }
+            } else {
+              console.log(
+                "Warning: addCommentToJiraIssue unavailable."
+              );
+            }
+
+            // ------------------------------------------------------
+            // MOVE JIRA → IN REVIEW
+            // ------------------------------------------------------
+
+            const result =
+              await client.callTool({
+                name:
+                  "transitionJiraIssue",
+
+                arguments: {
+                  cloudId,
+
+                  issueIdOrKey:
+                    issueKey,
+
+                  transitionId: "31"
+                }
+              });
+
+            if (result.isError) {
+              throw new Error(
+                "Failed to move Jira issue to In Review."
+              );
+            }
+
+            console.log(
+              `${issueKey} moved to In Review.`
+            );
+          }
+
+          try {
+            await main();
+          } finally {
+            await client
+              .close()
+              .catch(() => {});
+          }
+          NODE
+
+          node "$MCP_DIR/update.mjs"
+
+
+      # ============================================================
+      # 11. RECOVER FAILED TASK
+      #
+      # If implementation failed before a PR exists:
+      # Jira → To Do
+      #
+      # If a PR already exists, leave Jira alone.
+      # ============================================================
+
+      - name: Recover Jira task after failure
+        if: failure() && steps.prepare.outputs.issue_key != ''
+        env:
+          ATLASSIAN_MCP_API_KEY: ${{ secrets.ATLASSIAN_MCP_API_KEY }}
+          JIRA_CLOUD_ID: "79478d62-55e6-4f8a-9774-9ca35ff386c3"
+          ISSUE_KEY: ${{ steps.prepare.outputs.issue_key }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: "Vishalkeyss/ChamberAI"
+          BASE_BRANCH: "vishal_test"
+          AI_BRANCH: "ai-agent"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Checking whether a PR exists before recovering Jira task..."
+
+          OPEN_PR=$(gh pr list \
+            --repo "$REPO" \
+            --head "$AI_BRANCH" \
+            --base "$BASE_BRANCH" \
+            --state open \
+            --json number,url \
+            --jq '.[0]')
+
+          if [ -n "$OPEN_PR" ]; then
+            echo "An open PR exists."
+            echo "Leaving Jira issue in its current state."
+
+            echo "$OPEN_PR"
+
+            exit 0
+          fi
+
+          echo "No open PR exists."
+          echo "Returning $ISSUE_KEY to Jira To Do."
+
+          MCP_DIR="${RUNNER_TEMP}/mcp-jira-recovery"
+
+          mkdir -p "$MCP_DIR"
+          cd "$MCP_DIR"
+
+          npm init -y >/dev/null 2>&1
+          npm install @modelcontextprotocol/client >/dev/null 2>&1
+
+          cat > "$MCP_DIR/recover.mjs" <<'NODE'
+          import {
+            Client,
+            StreamableHTTPClientTransport
+          } from "@modelcontextprotocol/client";
+
+          const token =
+            process.env.ATLASSIAN_MCP_API_KEY;
+
+          const cloudId =
+            process.env.JIRA_CLOUD_ID;
+
+          const issueKey =
+            process.env.ISSUE_KEY;
+
+          const client = new Client(
+            {
+              name: "github-actions-jira-recovery",
+              version: "1.0.0"
+            },
+            {
+              versionNegotiation: {
+                mode: "auto"
+              }
+            }
+          );
+
+          const transport =
+            new StreamableHTTPClientTransport(
+              new URL(
+                "https://mcp.atlassian.com/v2/mcp"
+              ),
+              {
+                requestInit: {
+                  headers: {
+                    Authorization:
+                      `Bearer ${token}`
+                  }
+                }
+              }
+            );
+
+          async function main() {
+            await client.connect(transport);
+
+            const tools =
+              await client.listTools();
+
+            const transitionTool =
+              tools.tools.find(
+                tool =>
+                  tool.name ===
+                  "transitionJiraIssue"
+              );
+
+            const commentTool =
+              tools.tools.find(
+                tool =>
+                  tool.name ===
+                  "addCommentToJiraIssue"
+              );
+
+            if (!transitionTool) {
+              throw new Error(
+                "transitionJiraIssue unavailable."
+              );
+            }
+
+            // ------------------------------------------------------
+            // MOVE BACK TO TO DO
+            // ------------------------------------------------------
+
+            const result =
+              await client.callTool({
+                name:
+                  "transitionJiraIssue",
+
+                arguments: {
+                  cloudId,
+
+                  issueIdOrKey:
+                    issueKey,
+
+                  transitionId: "11"
+                }
+              });
+
+            if (result.isError) {
+              throw new Error(
+                "Failed to move Jira issue back to To Do."
+              );
+            }
+
+            console.log(
+              `${issueKey} moved back to To Do.`
+            );
+
+            // ------------------------------------------------------
+            // ADD FAILURE COMMENT
+            // ------------------------------------------------------
+
+            if (commentTool) {
+              const schema =
+                commentTool.inputSchema ?? {};
+
+              const properties =
+                schema.properties ?? {};
+
+              let commentField = null;
+
+              if (
+                properties.commentBody
+              ) {
+                commentField =
+                  "commentBody";
+              } else if (
+                properties.body
+              ) {
+                commentField =
+                  "body";
+              } else if (
+                properties.comment
+              ) {
+                commentField =
+                  "comment";
+              }
+
+              if (commentField) {
+                const commentArguments = {
+                  cloudId,
+                  issueIdOrKey: issueKey
+                };
+
+                commentArguments[commentField] =
+                  "AI implementation failed before a pull request was created. The Jira task has been returned to To Do so the next scheduled run can retry it.";
+
+                await client.callTool({
+                  name:
+                    "addCommentToJiraIssue",
+                  arguments:
+                    commentArguments
+                });
+              }
+            }
+          }
+
+          try {
+            await main();
+          } finally {
+            await client
+              .close()
+              .catch(() => {});
+          }
+          NODE
+
+          node "$MCP_DIR/recover.mjs"
+
+
+      # ============================================================
+      # 12. FINAL RESULT
+      # ============================================================
+
+      - name: Final result
+        if: success() && steps.prepare.outputs.issue_key != ''
+        env:
+          ISSUE_KEY: ${{ steps.prepare.outputs.issue_key }}
+          PR_URL: ${{ steps.create-pr.outputs.pr_url }}
         run: |
           echo ""
           echo "======================================"
-          echo "       PHASE 3 CHECKPOINT"
+          echo "       AI TASK COMPLETED"
           echo "======================================"
           echo ""
 
-          echo "Jira issue: $ISSUE_KEY"
-          echo "Branch: ai-agent"
-          echo "PR target: vishal_test"
-          echo ""
+          echo "Jira task : $ISSUE_KEY"
+          echo "Branch    : ai-agent"
+          echo "PR        : $PR_URL"
+          echo "Target    : vishal_test"
+          echo "Jira      : In Review"
 
-          echo "Jira task detected."
-          echo "AI agent branch lock passed."
           echo ""
-
-          echo "READY FOR NEXT PHASE:"
-          echo "  Jira → In Progress"
-          echo "  Checkout vishal_test"
-          echo "  Prepare ai-agent"
-          echo "  Start AI implementation"
-          echo ""
-
-          echo "======================================"
-          echo "       PHASE 3 COMPLETE"
-          echo "======================================"
+          echo "Workflow completed successfully."
