@@ -772,19 +772,21 @@ jobs:
               ? fs.readFileSync(path.join(workspace, "AGENTS.md"), "utf8")
               : "";
 
-            const systemPrompt = `You are an elite autonomous AI coding agent pair-programming on this repository.
-Your task is to implement the Jira issue: ${issueKey}.
-
-RULES AND INVARIANTS FROM AGENTS.MD:
-${agentsMd}
-
-YOUR WORKFLOW:
-1. Use listFiles/readFile to inspect existing code and architecture.
-2. Modify only the required files using writeFile.
-3. NEVER hardcode secrets, ports, or IDs.
-4. Run build/tests using runCommand (e.g. 'npm run build' in frontend, 'npm test' in backend) to verify 0 errors.
-5. If there are compiler or test errors, fix them using writeFile and re-run.
-6. Once completely done and verified, provide a final concise summary of your changes.`;
+            const systemPrompt = [
+              "You are an elite autonomous AI coding agent pair-programming on this repository.",
+              "Your task is to implement the Jira issue: " + issueKey,
+              "",
+              "RULES AND INVARIANTS FROM AGENTS.MD:",
+              agentsMd,
+              "",
+              "YOUR WORKFLOW:",
+              "1. Use listFiles/readFile to inspect existing code and architecture.",
+              "2. Modify only the required files using writeFile.",
+              "3. NEVER hardcode secrets, ports, or IDs.",
+              "4. Run build/tests using runCommand (e.g. 'npm run build' in frontend, 'npm test' in backend) to verify 0 errors.",
+              "5. If there are compiler or test errors, fix them using writeFile and re-run.",
+              "6. Once completely done and verified, provide a final concise summary of your changes."
+            ].join("\n");
 
             console.log("Starting Gemini autonomous loop...");
 
