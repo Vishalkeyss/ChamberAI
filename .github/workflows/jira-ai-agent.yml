@@ -705,19 +705,33 @@ jobs:
           cd "$AGENT_DIR"
 
           npm init -y >/dev/null 2>&1
-          npm install @google/genai >/dev/null 2>&1
+          npm install @google/genai undici >/dev/null 2>&1
 
           cat > "$AGENT_DIR/agent.mjs" <<'NODE'
+          import { Agent, setGlobalDispatcher } from "undici";
           import { GoogleGenAI } from "@google/genai";
           import fs from "node:fs";
           import path from "node:path";
           import { execSync } from "node:child_process";
 
+          // Prevent undici headers timeout on long Gemini tool thinking turns
+          setGlobalDispatcher(new Agent({
+            headersTimeout: 600000, // 10 minutes
+            bodyTimeout: 600000,    // 10 minutes
+            keepAliveTimeout: 60000,
+            connections: 20
+          }));
+
           const apiKey = process.env.GEMINI_API_KEY;
           const workspace = process.env.GITHUB_WORKSPACE;
           const issueKey = process.env.ISSUE_KEY;
 
-          const ai = new GoogleGenAI({ apiKey });
+          const ai = new GoogleGenAI({
+            apiKey,
+            httpOptions: {
+              timeout: 600000
+            }
+          });
 
           // Tool definitions for autonomous coding
           const readFileDeclaration = {
@@ -908,9 +922,24 @@ jobs:
                 });
               }
 
-              response = await chat.sendMessage({
-                message: parts
-              });
+              let sendAttempts = 0;
+              let nextResponse = null;
+              while (sendAttempts++ < 3) {
+                try {
+                  nextResponse = await chat.sendMessage({
+                    message: parts
+                  });
+                  break;
+                } catch (sendErr) {
+                  console.log(`[Turn ${turns}] sendMessage warning (attempt ${sendAttempts}): ${sendErr.message}`);
+                  if (sendAttempts < 3) {
+                    await new Promise(r => setTimeout(r, 5000));
+                  } else {
+                    throw sendErr;
+                  }
+                }
+              }
+              response = nextResponse;
             }
 
             console.log("Agent finished. Writing output report...");
