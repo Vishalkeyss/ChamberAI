@@ -894,18 +894,22 @@ jobs:
                 break;
               }
 
-              const functionResponses = [];
+              const parts = [];
               for (const call of functionCalls) {
                 console.log(`[Turn ${turns}] Tool Call: ${call.name}(${JSON.stringify(call.args)})`);
                 const result = executeTool(call.name, call.args);
-                functionResponses.push({
-                  name: call.name,
-                  response: result
+                parts.push({
+                  functionResponse: {
+                    name: call.name,
+                    response: {
+                      output: result
+                    }
+                  }
                 });
               }
 
               response = await chat.sendMessage({
-                message: functionResponses
+                message: parts
               });
             }
 
