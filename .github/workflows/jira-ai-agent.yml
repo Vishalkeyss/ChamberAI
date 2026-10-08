@@ -633,20 +633,215 @@ jobs:
 
 
       # ============================================================
-      # 5. RUN CLAUDE CODE — IMPLEMENT + TEST + FIX
+      # 5. RUN GEMINI AGENT — IMPLEMENT + TEST + FIX
       # ============================================================
 
-      - name: Run Claude Code
+      - name: Run Gemini Coding Agent
         if: steps.prepare.outputs.issue_key != ''
-        id: claude
-        uses: anthropics/claude-code-action@v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: |
-            Read .ai-task.md and AGENTS.md completely.
-            Implement the Jira task described in .ai-task.md following all rules, architecture, and invariants in AGENTS.md.
-            Run the relevant tests and build/type-check to verify your work.
-            Once finished, write your summary report to claude-output.md.
+        id: gemini
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ISSUE_KEY: ${{ steps.prepare.outputs.issue_key }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GEMINI_API_KEY:-}" ]; then
+            echo "ERROR: GEMINI_API_KEY secret is missing."
+            echo "Please add GEMINI_API_KEY (from https://aistudio.google.com/) to GitHub repo secrets."
+            exit 1
+          fi
+
+          echo "Installing Gemini SDK..."
+          AGENT_DIR="${RUNNER_TEMP}/gemini-agent"
+          mkdir -p "$AGENT_DIR"
+          cd "$AGENT_DIR"
+
+          npm init -y >/dev/null 2>&1
+          npm install @google/genai >/dev/null 2>&1
+
+          cat > "$AGENT_DIR/agent.mjs" <<'NODE'
+          import { GoogleGenAI } from "@google/genai";
+          import fs from "node:fs";
+          import path from "node:path";
+          import { execSync } from "node:child_process";
+
+          const apiKey = process.env.GEMINI_API_KEY;
+          const workspace = process.env.GITHUB_WORKSPACE;
+          const issueKey = process.env.ISSUE_KEY;
+
+          const ai = new GoogleGenAI({ apiKey });
+
+          // Tool definitions for autonomous coding
+          const readFileDeclaration = {
+            name: "readFile",
+            description: "Read contents of a file relative to workspace root",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                filePath: { type: "STRING", description: "Relative path to file in workspace" }
+              },
+              required: ["filePath"]
+            }
+          };
+
+          const writeFileDeclaration = {
+            name: "writeFile",
+            description: "Write or update contents of a file relative to workspace root",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                filePath: { type: "STRING", description: "Relative path to file in workspace" },
+                content: { type: "STRING", description: "Full new content of the file" }
+              },
+              required: ["filePath", "content"]
+            }
+          };
+
+          const runCommandDeclaration = {
+            name: "runCommand",
+            description: "Run a shell command (e.g., npm test, npm run build, git status) in workspace",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                command: { type: "STRING", description: "Shell command line to execute" },
+                cwd: { type: "STRING", description: "Optional subdirectory (e.g. frontend, backend)" }
+              },
+              required: ["command"]
+            }
+          };
+
+          const listFilesDeclaration = {
+            name: "listFiles",
+            description: "List files and directories in a given workspace subdirectory",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                dirPath: { type: "STRING", description: "Relative path to directory" }
+              },
+              required: ["dirPath"]
+            }
+          };
+
+          function executeTool(name, args) {
+            try {
+              if (name === "readFile") {
+                const fullPath = path.resolve(workspace, args.filePath);
+                if (!fullPath.startsWith(workspace)) return { error: "Path traversal forbidden" };
+                if (!fs.existsSync(fullPath)) return { error: `File not found: ${args.filePath}` };
+                return { content: fs.readFileSync(fullPath, "utf8") };
+              }
+              if (name === "writeFile") {
+                const fullPath = path.resolve(workspace, args.filePath);
+                if (!fullPath.startsWith(workspace)) return { error: "Path traversal forbidden" };
+                fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+                fs.writeFileSync(fullPath, args.content, "utf8");
+                return { success: true, filePath: args.filePath };
+              }
+              if (name === "listFiles") {
+                const fullPath = path.resolve(workspace, args.dirPath || ".");
+                if (!fullPath.startsWith(workspace)) return { error: "Path traversal forbidden" };
+                const items = fs.readdirSync(fullPath, { withFileTypes: true }).map(d => ({
+                  name: d.name,
+                  isDirectory: d.isDirectory()
+                }));
+                return { items };
+              }
+              if (name === "runCommand") {
+                const targetCwd = args.cwd ? path.resolve(workspace, args.cwd) : workspace;
+                const output = execSync(args.command, {
+                  cwd: targetCwd,
+                  encoding: "utf8",
+                  timeout: 180000,
+                  maxBuffer: 10 * 1024 * 1024
+                });
+                return { stdout: output };
+              }
+              return { error: `Unknown tool: ${name}` };
+            } catch (err) {
+              return { error: err.message, stdout: err.stdout, stderr: err.stderr };
+            }
+          }
+
+          async function main() {
+            const taskInstructions = fs.readFileSync(path.join(workspace, ".ai-task.md"), "utf8");
+            const agentsMd = fs.existsSync(path.join(workspace, "AGENTS.md"))
+              ? fs.readFileSync(path.join(workspace, "AGENTS.md"), "utf8")
+              : "";
+
+            const systemPrompt = `You are an elite autonomous AI coding agent pair-programming on this repository.
+Your task is to implement the Jira issue: ${issueKey}.
+
+RULES AND INVARIANTS FROM AGENTS.MD:
+${agentsMd}
+
+YOUR WORKFLOW:
+1. Use listFiles/readFile to inspect existing code and architecture.
+2. Modify only the required files using writeFile.
+3. NEVER hardcode secrets, ports, or IDs.
+4. Run build/tests using runCommand (e.g. 'npm run build' in frontend, 'npm test' in backend) to verify 0 errors.
+5. If there are compiler or test errors, fix them using writeFile and re-run.
+6. Once completely done and verified, provide a final concise summary of your changes.`;
+
+            console.log("Starting Gemini autonomous loop...");
+
+            const chat = ai.chats.create({
+              model: "gemini-2.5-pro",
+              config: {
+                systemInstruction: systemPrompt,
+                tools: [{
+                  functionDeclarations: [
+                    readFileDeclaration,
+                    writeFileDeclaration,
+                    runCommandDeclaration,
+                    listFilesDeclaration
+                  ]
+                }]
+              }
+            });
+
+            let response = await chat.sendMessage({
+              message: `Please implement this task completely and verify with tests/build:\n\n${taskInstructions}`
+            });
+
+            const maxTurns = 25;
+            let turns = 0;
+            let finalSummary = "";
+
+            while (turns++ < maxTurns) {
+              const functionCalls = response.functionCalls || [];
+              if (!functionCalls || functionCalls.length === 0) {
+                finalSummary = response.text || "Implementation completed successfully.";
+                break;
+              }
+
+              const functionResponses = [];
+              for (const call of functionCalls) {
+                console.log(`[Turn ${turns}] Tool Call: ${call.name}(${JSON.stringify(call.args)})`);
+                const result = executeTool(call.name, call.args);
+                functionResponses.push({
+                  name: call.name,
+                  response: result
+                });
+              }
+
+              response = await chat.sendMessage({
+                message: functionResponses
+              });
+            }
+
+            console.log("Agent finished. Writing output report...");
+            fs.writeFileSync(path.join(workspace, "gemini-output.md"), finalSummary, "utf8");
+            console.log("Gemini agent completed successfully.");
+          }
+
+          main().catch(err => {
+            console.error("Agent error:", err);
+            process.exit(1);
+          });
+          NODE
+
+          node "$AGENT_DIR/agent.mjs"
 
 
       # ============================================================
@@ -661,13 +856,15 @@ jobs:
 
           echo "Preparing PR information..."
 
-          if [ -f claude-output.md ]; then
+          if [ -f gemini-output.md ]; then
+            cp gemini-output.md "$RUNNER_TEMP/pr-body.md"
+          elif [ -f claude-output.md ]; then
             cp claude-output.md "$RUNNER_TEMP/pr-body.md"
           elif [ -f codex-output.md ]; then
             cp codex-output.md "$RUNNER_TEMP/pr-body.md"
           else
             cat > "$RUNNER_TEMP/pr-body.md" <<'EOF'
-          Claude Code completed the implementation.
+          Gemini AI agent completed the implementation.
 
           See the commit changes and workflow logs for validation details.
           EOF
@@ -675,6 +872,7 @@ jobs:
 
           # These files are workflow-only and must never be committed.
           rm -f .ai-task.md
+          rm -f gemini-output.md
           rm -f claude-output.md
           rm -f codex-output.md
 
