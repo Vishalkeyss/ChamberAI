@@ -440,7 +440,9 @@ jobs:
 
                   issueIdOrKey: issueKey,
 
-                  transitionId: "21"
+                  transition: {
+                    id: "21"
+                  }
                 }
               });
 
@@ -610,21 +612,19 @@ jobs:
 
           FINAL RESPONSE:
 
-          Report:
+          Write a clear completion report into claude-output.md with:
 
-          - What was changed.
-          - Files changed.
-          - Tests executed.
-          - Build/lint/type-check commands executed.
-          - Results.
+          - Summary of changes made.
+          - Files created or modified.
+          - Tests and validation commands run.
+          - Results of tests and build.
           - Any important implementation notes.
-          - Any remaining issue that could not be resolved.
 
           Do not include unnecessary commentary.
           EOF
 
           echo ""
-          echo "Codex task file created."
+          echo "Task instructions file (.ai-task.md) created."
           echo ""
           echo "Task:"
           echo "  $ISSUE_KEY"
@@ -633,20 +633,20 @@ jobs:
 
 
       # ============================================================
-      # 5. RUN OPENAI CODEX
+      # 5. RUN CLAUDE CODE — IMPLEMENT + TEST + FIX
       # ============================================================
 
-      - name: Run OpenAI Codex
+      - name: Run Claude Code
         if: steps.prepare.outputs.issue_key != ''
-        id: codex
-        uses: openai/codex-action@v1
+        id: claude
+        uses: anthropics/claude-code-action@v1
         with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          permission-profile: ":workspace"
-          safety-strategy: "drop-sudo"
-          working-directory: ${{ github.workspace }}
-          output-file: codex-output.md
-          prompt-file: .ai-task.md
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Read .ai-task.md and AGENTS.md completely.
+            Implement the Jira task described in .ai-task.md following all rules, architecture, and invariants in AGENTS.md.
+            Run the relevant tests and build/type-check to verify your work.
+            Once finished, write your summary report to claude-output.md.
 
 
       # ============================================================
@@ -661,11 +661,13 @@ jobs:
 
           echo "Preparing PR information..."
 
-          if [ -f codex-output.md ]; then
+          if [ -f claude-output.md ]; then
+            cp claude-output.md "$RUNNER_TEMP/pr-body.md"
+          elif [ -f codex-output.md ]; then
             cp codex-output.md "$RUNNER_TEMP/pr-body.md"
           else
             cat > "$RUNNER_TEMP/pr-body.md" <<'EOF'
-          AI agent completed the implementation.
+          Claude Code completed the implementation.
 
           See the commit changes and workflow logs for validation details.
           EOF
@@ -673,6 +675,7 @@ jobs:
 
           # These files are workflow-only and must never be committed.
           rm -f .ai-task.md
+          rm -f claude-output.md
           rm -f codex-output.md
 
           echo "PR body prepared."
@@ -965,7 +968,9 @@ jobs:
                   issueIdOrKey:
                     issueKey,
 
-                  transitionId: "31"
+                  transition: {
+                    id: "31"
+                  }
                 }
               });
 
@@ -1128,7 +1133,9 @@ jobs:
                   issueIdOrKey:
                     issueKey,
 
-                  transitionId: "11"
+                  transition: {
+                    id: "11"
+                  }
                 }
               });
 
