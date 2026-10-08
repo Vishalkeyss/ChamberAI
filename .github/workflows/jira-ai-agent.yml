@@ -434,30 +434,74 @@ jobs:
               `Moving ${issueKey} → In Progress...`
             );
 
-            const transitionResult =
-              await client.callTool({
-                name: "transitionJiraIssue",
+            try {
+              let targetTransitionId = "21"; // default fallback
 
+              const transitionsRes = await client.callTool({
+                name: "getTransitionsForJiraIssue",
                 arguments: {
                   cloudId,
+                  issueIdOrKey: issueKey
+                }
+              }).catch(() => null);
 
+              if (transitionsRes && !transitionsRes.isError) {
+                const trJson = (transitionsRes.content ?? []).find(
+                  item => item.type === "text" && item.text && item.text.trim().startsWith("{")
+                );
+                if (trJson) {
+                  try {
+                    const trData = JSON.parse(trJson.text);
+                    const transitionsList = trData.transitions || trData.data?.transitions || [];
+                    console.log(
+                      "Available transitions:",
+                      transitionsList.map(t => `${t.id}: ${t.name}`).join(", ")
+                    );
+                    const inProgressTr = transitionsList.find(t =>
+                      t.name?.toLowerCase().includes("progress") ||
+                      t.to?.name?.toLowerCase().includes("progress")
+                    );
+                    if (inProgressTr) {
+                      targetTransitionId = inProgressTr.id;
+                    }
+                  } catch (e) {
+                    console.log("Could not parse transitions:", e.message);
+                  }
+                }
+              }
+
+              const transitionResult = await client.callTool({
+                name: "transitionJiraIssue",
+                arguments: {
+                  cloudId,
                   issueIdOrKey: issueKey,
-
                   transition: {
-                    id: "21"
+                    id: targetTransitionId
                   }
                 }
               });
 
-            if (transitionResult.isError) {
-              throw new Error(
-                "Failed to move Jira issue to In Progress."
+              if (transitionResult.isError) {
+                console.log(
+                  `Warning: Jira transition to In Progress returned an error:`,
+                  JSON.stringify(transitionResult.content)
+                );
+                console.log(
+                  `Continuing anyway since task ${issueKey} was found and selected.`
+                );
+              } else {
+                console.log(
+                  `${issueKey} moved to In Progress (transition id: ${targetTransitionId}).`
+                );
+              }
+            } catch (transitionErr) {
+              console.log(
+                `Warning moving ${issueKey} to In Progress: ${transitionErr.message}`
+              );
+              console.log(
+                `Continuing with agent execution.`
               );
             }
-
-            console.log(
-              `${issueKey} moved to In Progress.`
-            );
 
             // --------------------------------------------------------
             // OUTPUT DATA TO GITHUB ACTIONS
@@ -1160,32 +1204,64 @@ jobs:
             // MOVE JIRA → IN REVIEW
             // ------------------------------------------------------
 
-            const result =
-              await client.callTool({
-                name:
-                  "transitionJiraIssue",
+            try {
+              let reviewTransitionId = "31"; // default fallback
 
+              const transitionsRes = await client.callTool({
+                name: "getTransitionsForJiraIssue",
                 arguments: {
                   cloudId,
+                  issueIdOrKey: issueKey
+                }
+              }).catch(() => null);
 
-                  issueIdOrKey:
-                    issueKey,
+              if (transitionsRes && !transitionsRes.isError) {
+                const trJson = (transitionsRes.content ?? []).find(
+                  item => item.type === "text" && item.text && item.text.trim().startsWith("{")
+                );
+                if (trJson) {
+                  try {
+                    const trData = JSON.parse(trJson.text);
+                    const transitionsList = trData.transitions || trData.data?.transitions || [];
+                    const reviewTr = transitionsList.find(t =>
+                      t.name?.toLowerCase().includes("review") ||
+                      t.to?.name?.toLowerCase().includes("review")
+                    );
+                    if (reviewTr) {
+                      reviewTransitionId = reviewTr.id;
+                    }
+                  } catch (e) {
+                    console.log("Could not parse review transitions:", e.message);
+                  }
+                }
+              }
 
+              const result = await client.callTool({
+                name: "transitionJiraIssue",
+                arguments: {
+                  cloudId,
+                  issueIdOrKey: issueKey,
                   transition: {
-                    id: "31"
+                    id: reviewTransitionId
                   }
                 }
               });
 
-            if (result.isError) {
-              throw new Error(
-                "Failed to move Jira issue to In Review."
+              if (result.isError) {
+                console.log(
+                  "Warning: Failed to move Jira issue to In Review:",
+                  JSON.stringify(result.content)
+                );
+              } else {
+                console.log(
+                  `${issueKey} moved to In Review (transition id: ${reviewTransitionId}).`
+                );
+              }
+            } catch (err) {
+              console.log(
+                `Warning transitioning ${issueKey} to In Review: ${err.message}`
               );
             }
-
-            console.log(
-              `${issueKey} moved to In Review.`
-            );
           }
 
           try {
@@ -1325,32 +1401,64 @@ jobs:
             // MOVE BACK TO TO DO
             // ------------------------------------------------------
 
-            const result =
-              await client.callTool({
-                name:
-                  "transitionJiraIssue",
+            try {
+              let todoTransitionId = "11"; // default fallback
 
+              const transitionsRes = await client.callTool({
+                name: "getTransitionsForJiraIssue",
                 arguments: {
                   cloudId,
+                  issueIdOrKey: issueKey
+                }
+              }).catch(() => null);
 
-                  issueIdOrKey:
-                    issueKey,
+              if (transitionsRes && !transitionsRes.isError) {
+                const trJson = (transitionsRes.content ?? []).find(
+                  item => item.type === "text" && item.text && item.text.trim().startsWith("{")
+                );
+                if (trJson) {
+                  try {
+                    const trData = JSON.parse(trJson.text);
+                    const transitionsList = trData.transitions || trData.data?.transitions || [];
+                    const todoTr = transitionsList.find(t =>
+                      t.name?.toLowerCase().includes("to do") ||
+                      t.to?.name?.toLowerCase().includes("to do")
+                    );
+                    if (todoTr) {
+                      todoTransitionId = todoTr.id;
+                    }
+                  } catch (e) {
+                    console.log("Could not parse todo transitions:", e.message);
+                  }
+                }
+              }
 
+              const result = await client.callTool({
+                name: "transitionJiraIssue",
+                arguments: {
+                  cloudId,
+                  issueIdOrKey: issueKey,
                   transition: {
-                    id: "11"
+                    id: todoTransitionId
                   }
                 }
               });
 
-            if (result.isError) {
-              throw new Error(
-                "Failed to move Jira issue back to To Do."
+              if (result.isError) {
+                console.log(
+                  "Warning: Failed to move Jira issue back to To Do:",
+                  JSON.stringify(result.content)
+                );
+              } else {
+                console.log(
+                  `${issueKey} moved back to To Do (transition id: ${todoTransitionId}).`
+                );
+              }
+            } catch (err) {
+              console.log(
+                `Warning returning ${issueKey} to To Do: ${err.message}`
               );
             }
-
-            console.log(
-              `${issueKey} moved back to To Do.`
-            );
 
             // ------------------------------------------------------
             // ADD FAILURE COMMENT
