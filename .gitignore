@@ -51,3 +51,4 @@ Thumbs.db
 PENDING_BUGS.md
 .claude/
 SESSION.md
+*.tsbuildinfo
