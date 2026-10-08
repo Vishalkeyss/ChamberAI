@@ -3,7 +3,7 @@
 > **Master Plan Reference:** [`MASTER_IMPLEMENTATION_PLAYBOOK.md`](file:///e:/Chamber/MASTER_IMPLEMENTATION_PLAYBOOK.md)  
 > **Total Phases:** 15 (Phases 00 – 14)  
 > **Total Prompts:** 72  
-> **Status:** Phase 04 completed · Next: Phase 05 · Last updated 2026-10-08
+> **Status:** Phase 05 in progress (05.2–05.5 done; 05.1 on hold) · Last updated 2026-10-08
 
 ---
 
@@ -11,7 +11,7 @@
 
 | Total Prompts | Completed | In Progress | Pending | Progress (%) |
 |:---:|:---:|:---:|:---:|:---:|
-| **72** | **20** | **0** | **52** | **27.8%** |
+| **72** | **24** | **0** | **48** | **33.3%** |
 
 ---
 
@@ -24,7 +24,7 @@
 | **Phase 02** | Membership Plans, Applications, Review & Billing | 5 | ✅ Completed | 5 / 5 |
 | **Phase 03** | Business Profiles & Member Directory | 2 | ✅ Completed (spec gaps open) | 2 / 2 |
 | **Phase 04** | Events, Ticketing, Sponsorships & Day-Of Check-In | 6 | ✅ Completed (OD-001 payment pending) | 6 / 6 |
-| **Phase 05** | Networking, 1:1 Meetings, Messaging & CRM | 6 | ⏳ Pending | 0 / 6 |
+| **Phase 05** | Networking, 1:1 Meetings, Messaging & CRM | 6 | 🔄 In Progress (05.1 on hold) | 4 / 6 |
 | **Phase 06** | Community Chapters, Interest Groups & Polls | 4 | ⏳ Pending | 0 / 4 |
 | **Phase 07** | Content Publishing, Announcements, Blog, Media & Jobs | 6 | ⏳ Pending | 0 / 6 |
 | **Phase 08** | Learning Management (LMS), CEU & Loyalty Rewards | 4 | ⏳ Pending | 0 / 4 |
@@ -109,11 +109,23 @@
 ---
 
 ### Phase 05: Networking, 1:1 Meetings, Messaging & CRM
-- [ ] **Prompt 05.1**: 1-to-1 Networking Meeting Scheduling & Status Lifecycle `[⏳ PENDING]`
-- [ ] **Prompt 05.2**: Member Direct Messaging Inbox, Threaded Chat & Read Receipts `[⏳ PENDING]`
-- [ ] **Prompt 05.3**: B2B Business Referrals, Multi-Contact Lead Passing & Lifecycle Tracking `[⏳ PENDING]`
-- [ ] **Prompt 05.4**: QR Digital Business Card & Contact vCard Exchange Engine `[⏳ PENDING]`
-- [ ] **Prompt 05.5**: Member Lightweight CRM, Deals Pipeline & Kanban Tasks `[⏳ PENDING]`
+- [ ] **Prompt 05.1**: 1-to-1 Networking Meeting Scheduling & Status Lifecycle `[⏸️ ON HOLD — user]`
+- [x] **Prompt 05.2**: Member Direct Messaging Inbox, Threaded Chat & Read Receipts `[✅ COMPLETED]`
+  - *Backend:* `networking/routes/messages.routes.ts`, `services/messages.service.ts`, `repositories/messages.repository.ts`, `repositories/network-members.repository.ts`, migration `0017_networking_messages_referrals.sql` (indexes), `test/messages.test.ts`
+  - *Frontend:* `networking/pages/MessagesPage.tsx`, `components/ConversationsList.tsx`, `ChatThreadView.tsx`, `QuickChatDrawer.tsx`, `hooks/useUnreadMessages.ts`; Topbar Messages badge; Directory "Send message" → drawer
+  - *Status:* Same-chamber only, auto read receipts, unread badge, in-app notification. Skipped: WebSocket (polling, OD-056), online dot / emoji (OD-058), email digest (OD-059), moderation (OD-060).
+- [x] **Prompt 05.3**: B2B Business Referrals, Multi-Contact Lead Passing & Lifecycle Tracking `[✅ COMPLETED]`
+  - *Backend:* `networking/routes/referrals.routes.ts`, `services/referrals.service.ts`, `repositories/referrals.repository.ts`, migration 0017 (`referrals.converted_value`), `test/referrals.test.ts`
+  - *Frontend:* `networking/pages/ReferralsPage.tsx`, `components/ReferralCard.tsx`, `GiveReferralModal.tsx` (3-step wizard)
+  - *Status:* Atomic referral + contacts + 200 points + ledger + notifications; recipient-only forward status updates with deal value. BUG-056 fixed (multi-business member: referral shown only under Received; cannot refer any own business). Skipped: admin metrics (OD-068), multi-business picker (OD-067), email alerts (OD-059).
+- [x] **Prompt 05.4**: QR Digital Business Card & Contact vCard Exchange Engine `[✅ COMPLETED]`
+  - *Backend:* migration `0018_business_card.sql`, `networking/routes/business-card.routes.ts`, `services/business-card.service.ts`, `services/vcard.service.ts`, `repositories/business-card.repository.ts`, `test/business-card.test.ts`
+  - *Frontend:* `networking/pages/DigitalCardPage.tsx`, `components/BusinessCard3D.tsx`, `public/pages/PublicCardPage.tsx` (`/card/:token`)
+  - *Status:* Live card data, flip card with local QR + chamber logo, vCard (RFC 6350), share / QR PNG / print, public card with view analytics (owner excluded). Skipped: scan + saved contacts (OD-075), Wallet passes (OD-076), Book 1:1 CTA (05.1 hold).
+- [x] **Prompt 05.5**: Member Lightweight CRM, Deals Pipeline & Kanban Tasks `[✅ COMPLETED]`
+  - *Backend:* migration `0019_crm_tasks.sql`, `db/schema/crm.schema.ts`, `modules/crm/{routes,services,repositories,validation}`, `modules/tasks/{routes,services,repositories,validation}`, `test/crm-tasks.test.ts`
+  - *Frontend:* `features/crm/pages/CrmPipelinePage.tsx` (+ PipelineKanbanBoard, ContactCard, ContactDetailDrawer, AddContactModal), `features/tasks/pages/KanbanTasksPage.tsx` (+ TaskBoard, TaskCard, TaskFormModal); quick conversion from received referrals / directory profile
+  - *Status:* Private per-owner CRM (6 stages, metrics + win rate, drag + menu move, timeline, CSV export) and Kanban tasks (quick add, urgent priority, overdue, contact link, completed_at). Skipped: 09:00 reminders (OD-086, no scheduler), super-admin view (OD-088).
 - [ ] **Prompt 05.6**: Chamber Mentorship Program, Matching & Relationships `[⏳ PENDING]`
 
 ---

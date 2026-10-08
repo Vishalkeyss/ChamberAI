@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Topbar, type TopbarProps } from './Topbar';
 import { Sidebar } from './Sidebar';
 import { memberNavigation } from '@/core/navigation/member-navigation';
+import { useUnreadMessages } from '@/features/networking/hooks/useUnreadMessages';
 
 export interface MemberLayoutProps {
   children?: React.ReactNode;
@@ -34,6 +35,18 @@ export const MemberLayout: React.FC<MemberLayoutProps> = ({
 }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const unreadMessages = useUnreadMessages(!!user);
+  // Sidebar badge on the Messages item (Prompt 05.2 §7.3).
+  const sections = useMemo(
+    () =>
+      memberNavigation.map((section) => ({
+        ...section,
+        items: section.items.map((item) =>
+          item.id === 'messages' && unreadMessages ? { ...item, badge: String(unreadMessages) } : item
+        ),
+      })),
+    [unreadMessages]
+  );
 
   const handleItemClick = (_id: string, href: string) => {
     setIsMobileMenuOpen(false);
@@ -47,7 +60,7 @@ export const MemberLayout: React.FC<MemberLayoutProps> = ({
       {/* Desktop Fixed Full-Length Member Sidebar (Left column from top to bottom) */}
       <div className="hidden lg:flex h-screen shrink-0">
         <Sidebar
-          sections={memberNavigation}
+          sections={sections}
           currentPath={currentPath}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -62,7 +75,7 @@ export const MemberLayout: React.FC<MemberLayoutProps> = ({
         <div className="fixed inset-0 z-50 flex lg:hidden bg-black/60 backdrop-blur-xs">
           <div className="relative flex w-[240px] h-full flex-col shadow-2xl animate-in slide-in-from-left duration-200">
             <Sidebar
-              sections={memberNavigation}
+              sections={sections}
               currentPath={currentPath}
               isCollapsed={false}
               onLogout={onLogout}
@@ -90,6 +103,8 @@ export const MemberLayout: React.FC<MemberLayoutProps> = ({
           onEditProfile={onEditProfile}
           onAccountSettings={onAccountSettings}
           onBackToAI={onBackToAI}
+          unreadMessages={unreadMessages}
+          onOpenMessages={onNavigate ? () => onNavigate('/portal/messages') : undefined}
         />
 
         {/* Scrollable Main Content Viewport */}

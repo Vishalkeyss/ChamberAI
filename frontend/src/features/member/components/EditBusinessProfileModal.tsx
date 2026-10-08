@@ -35,6 +35,7 @@ import {
   type RelatedOrganization,
   type RelatedOrgSearchResult,
 } from '../services/business-profile.api';
+import { EMAIL_PLACEHOLDER, PHONE_PLACEHOLDER } from '@/lib/placeholders';
 
 const RELATIONSHIP_TYPES: Array<RelatedOrganization['relationshipType']> = [
   'Parent Company',
@@ -503,7 +504,7 @@ export const EditBusinessProfileModal: React.FC<EditBusinessProfileModalProps> =
                 <Input
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="(512) 555-0148"
+                  placeholder={PHONE_PLACEHOLDER}
                   className="mt-1 text-sm bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
                 />
               </div>
@@ -515,7 +516,7 @@ export const EditBusinessProfileModal: React.FC<EditBusinessProfileModalProps> =
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="contact@morgansteeltrader"
+                  placeholder={EMAIL_PLACEHOLDER}
                   className="mt-1 text-sm bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
                 />
               </div>

@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { toast } from 'sonner';
+import { useAuth } from '@/hooks/useAuth';
 import {
   ChevronLeft,
   ChevronRight,
@@ -10,7 +12,10 @@ import { BusinessCard } from '../components/BusinessCard';
 import { PublicBusinessCard } from '../components/PublicBusinessCard';
 import { ViewProfileModal } from '../components/ViewProfileModal';
 import { GuestJoinModal } from '../components/GuestJoinModal';
-import { QuickMessageModal } from '../components/QuickMessageModal';
+import { QuickChatDrawer } from '../../networking/components/QuickChatDrawer';
+import { AddContactModal } from '../../crm/components/AddContactModal';
+import type { CrmContactInput } from '../../crm/services/crm.api';
+import type { NetworkMember } from '../../networking/services/networking.api';
 import { BookMeetingModal } from '../components/BookMeetingModal';
 import {
   fetchDirectoryListings,
@@ -25,6 +30,8 @@ export interface DirectoryPageProps {
   chamberName?: string;
   chamberSlug?: string;
   onNavigateToPlans?: () => void;
+  /** Opens the full Messages inbox on a thread (member mode). */
+  onOpenMessages?: (partnerId: string) => void;
 }
 
 export const DirectoryPage: React.FC<DirectoryPageProps> = ({
@@ -32,6 +39,7 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
   chamberName,
   chamberSlug,
   onNavigateToPlans,
+  onOpenMessages,
 }) => {
   // State
   const [businesses, setBusinesses] = useState<DirectoryBusiness[]>([]);
@@ -41,7 +49,10 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
   const [loadError, setLoadError] = useState(false);
 
   // Filter state
-  const [searchQuery, setSearchQuery] = useState('');
+  // ?q= pre-fills the search (e.g. "View Business Profile" from Messages).
+  const [searchQuery, setSearchQuery] = useState(() =>
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('q') || '' : ''
+  );
   const [selectedIndustry, setSelectedIndustry] = useState('');
   const [selectedCity, setSelectedCity] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -50,12 +61,14 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
   const [selectedBusiness, setSelectedBusiness] = useState<DirectoryBusiness | null>(null);
   const [isViewProfileOpen, setIsViewProfileOpen] = useState(false);
   const [isGuestJoinOpen, setIsGuestJoinOpen] = useState(false);
-  const [isQuickMessageOpen, setIsQuickMessageOpen] = useState(false);
+  const [chatPartner, setChatPartner] = useState<NetworkMember | null>(null);
+  const [crmPrefill, setCrmPrefill] = useState<Partial<CrmContactInput> | null>(null);
   const [isBookMeetingOpen, setIsBookMeetingOpen] = useState(false);
 
   // Debounce ref
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMemberMode = mode === 'member';
+  const { user } = useAuth();
 
   // Load filter options on mount or chamber change
   useEffect(() => {
@@ -133,7 +146,23 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
   const handleSendMessage = (business: DirectoryBusiness) => {
     setSelectedBusiness(business);
     if (isMemberMode) {
-      setIsQuickMessageOpen(true);
+      const contact = business.primaryContact;
+      if (!contact) {
+        toast.error('This business has no active representative to message yet');
+        return;
+      }
+      if (contact.id === user?.id) {
+        toast.info('This is your own business profile');
+        return;
+      }
+      setChatPartner({
+        id: contact.id,
+        name: contact.name || business.name,
+        avatarUrl: contact.avatarUrl,
+        businessId: business.id,
+        companyName: business.name,
+        industry: business.industry,
+      });
     } else {
       setIsGuestJoinOpen(true);
     }
@@ -328,6 +357,26 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
         business={selectedBusiness}
         onSendMessage={handleSendMessage}
         onBookMeeting={handleBookMeeting}
+        onAddToCrm={
+          isMemberMode
+            ? (b) =>
+                setCrmPrefill({
+                  name: b.primaryContact?.name || b.name,
+                  company_name: b.name,
+                  email: b.primaryContact?.email || null,
+                  phone: b.primaryContact?.phone || b.phone || null,
+                  // Linked member only when it is someone else (OD-083).
+                  linked_user_id: b.primaryContact && b.primaryContact.id !== user?.id ? b.primaryContact.id : null,
+                })
+            : undefined
+        }
+      />
+
+      <AddContactModal
+        open={!!crmPrefill}
+        prefill={crmPrefill}
+        sourceLabel="From the chamber directory"
+        onClose={() => setCrmPrefill(null)}
       />
 
       {/* Guest Join Prompt Modal */}
@@ -339,11 +388,12 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
         onExplorePlans={onNavigateToPlans}
       />
 
-      {/* Quick Direct Message Modal */}
-      <QuickMessageModal
-        isOpen={isQuickMessageOpen}
-        onClose={() => setIsQuickMessageOpen(false)}
-        business={selectedBusiness}
+      {/* Prompt 05.2 §5.2 quick chat drawer */}
+      <QuickChatDrawer
+        open={!!chatPartner}
+        partner={chatPartner}
+        onClose={() => setChatPartner(null)}
+        onOpenInbox={onOpenMessages}
       />
 
       {/* 1:1 Meeting Scheduler Modal */}

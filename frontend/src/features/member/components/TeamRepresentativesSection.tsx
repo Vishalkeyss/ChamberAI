@@ -37,6 +37,7 @@ import {
   type TeamRepresentative,
   type InviteRepresentativePayload,
 } from '../services/business-profile.api';
+import { EMAIL_PLACEHOLDER, PHONE_PLACEHOLDER } from '@/lib/placeholders';
 
 const ACCESS_LEVEL_CARDS: Array<{
   key: TeamRepresentative['accessLevel'];
@@ -487,7 +488,7 @@ export const TeamRepresentativesSection: React.FC<TeamRepresentativesSectionProp
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@company.com"
+                placeholder={EMAIL_PLACEHOLDER}
                 className="mt-1 text-sm bg-white dark:bg-slate-900"
               />
             </div>
@@ -621,7 +622,7 @@ export const TeamRepresentativesSection: React.FC<TeamRepresentativesSectionProp
                 <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                   Email
                 </Label>
-                <Input
+                <Input placeholder={EMAIL_PLACEHOLDER}
                   type="email"
                   value={editEmail}
                   readOnly
@@ -649,7 +650,7 @@ export const TeamRepresentativesSection: React.FC<TeamRepresentativesSectionProp
                           updated[idx] = e.target.value;
                           setEditPhones(updated);
                         }}
-                        placeholder="e.g. (512) 555-0134"
+                        placeholder={PHONE_PLACEHOLDER}
                         className="pl-9 text-sm bg-white dark:bg-slate-900"
                       />
                     </div>

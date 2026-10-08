@@ -30,6 +30,11 @@ import { adminEventsRouter } from './modules/events/routes/admin-events.routes';
 import { adminEventsTabsRouter } from './modules/events/routes/admin-events-tabs.routes';
 import { sponsorshipsRouter } from './modules/events/routes/sponsorships.routes';
 import { eventFeedbackRouter } from './modules/events/routes/feedback.routes';
+import { messagesRouter } from './modules/networking/routes/messages.routes';
+import { referralsRouter } from './modules/networking/routes/referrals.routes';
+import { businessCardRouter } from './modules/networking/routes/business-card.routes';
+import { crmRouter } from './modules/crm/routes/crm.routes';
+import { tasksRouter } from './modules/tasks/routes/tasks.routes';
 import { runMigrations, getMigrationHistory } from './core/db/migrator';
 import { successResponse } from './core/shared/response';
 
@@ -76,6 +81,11 @@ export function createApp() {
   apiV1.route('/', adminEventsTabsRouter);
   apiV1.route('/', sponsorshipsRouter);
   apiV1.route('/', eventFeedbackRouter);
+  apiV1.route('/', messagesRouter);
+  apiV1.route('/', referralsRouter);
+  apiV1.route('/', businessCardRouter);
+  apiV1.route('/', crmRouter);
+  apiV1.route('/', tasksRouter);
 
   // Public Asset Delivery (Streams images/files from Cloudflare R2 / Miniflare STORAGE)
   apiV1.get('/public/assets/*', async (c) => {

@@ -32,6 +32,7 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { isValidPhoneNumber, normalizePhoneNumber } from '@/lib/validation';
+import { EMAIL_PLACEHOLDER, PHONE_PLACEHOLDER } from '@/lib/placeholders';
 
 export interface ApplyPlanModalProps {
   isOpen: boolean;
@@ -531,7 +532,7 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@business.com"
+                    placeholder={EMAIL_PLACEHOLDER}
                     className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -544,7 +545,7 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+1 (555) 019-2834"
+                    placeholder={PHONE_PLACEHOLDER}
                     className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -741,7 +742,7 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
                         type="email"
                         value={staffDraft.email || ''}
                         onChange={(e) => setStaffDraft({ ...staffDraft, email: e.target.value })}
-                        placeholder="Email (name@company.com)"
+                        placeholder={`Email (${EMAIL_PLACEHOLDER})`}
                         className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                       />
                     </div>
@@ -749,7 +750,7 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
                       type="tel"
                       value={staffDraft.phone || ''}
                       onChange={(e) => setStaffDraft({ ...staffDraft, phone: e.target.value })}
-                      placeholder="Phone (e.g. +1 (512) 555-0134)"
+                      placeholder={`Phone (${PHONE_PLACEHOLDER})`}
                       className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                     />
                     <div className="flex gap-2 pt-1">

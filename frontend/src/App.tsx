@@ -41,8 +41,14 @@ import { DirectoryPage } from './features/directory/pages/DirectoryPage';
 import { EventsExplorerPage } from './features/events/pages/EventsExplorerPage';
 import { AdminEventDetailPage } from './features/admin/events/pages/AdminEventDetailPage';
 import { AdminEventsListPage } from './features/admin/events/pages/AdminEventsListPage';
+import { MessagesPage } from './features/networking/pages/MessagesPage';
+import { ReferralsPage } from './features/networking/pages/ReferralsPage';
+import { DigitalCardPage } from './features/networking/pages/DigitalCardPage';
+import { PublicCardPage } from './features/public/pages/PublicCardPage';
+import { CrmPipelinePage } from './features/crm/pages/CrmPipelinePage';
+import { KanbanTasksPage } from './features/tasks/pages/KanbanTasksPage';
 
-export type MemberViewType = 'overview' | 'plans' | 'billing' | 'directory' | 'events';
+export type MemberViewType = 'overview' | 'plans' | 'billing' | 'directory' | 'events' | 'messages' | 'referrals' | 'card' | 'crm' | 'tasks';
 
 const MEMBER_VIEW_ALIAS_MAP: Record<string, MemberViewType> = {
   membership: 'plans',
@@ -52,6 +58,11 @@ const MEMBER_VIEW_ALIAS_MAP: Record<string, MemberViewType> = {
   billing: 'billing',
   directory: 'directory',
   events: 'events',
+  messages: 'messages',
+  referrals: 'referrals',
+  card: 'card',
+  crm: 'crm',
+  tasks: 'tasks',
   overview: 'overview',
 };
 
@@ -83,7 +94,8 @@ type ActiveShell =
   | 'chapter_admin'
   | 'super_admin'
   | 'settings'
-  | 'verify';
+  | 'verify'
+  | 'card';
 
 function AppContent() {
   const [activeShell, setActiveShell] = useState<ActiveShell>(() => {
@@ -91,6 +103,10 @@ function AppContent() {
       const p = window.location.pathname;
       if (p.startsWith('/verify')) {
         return 'verify';
+      }
+      // Prompt 05.4 public business card opened from a QR scan.
+      if (p.startsWith('/card/')) {
+        return 'card';
       }
       if (p.startsWith('/portal') || p.startsWith('/member')) {
         return 'member';
@@ -854,6 +870,16 @@ function AppContent() {
                   ? '/portal/directory'
                   : memberView === 'events'
                   ? '/portal/events'
+                  : memberView === 'messages'
+                  ? '/portal/messages'
+                  : memberView === 'referrals'
+                  ? '/portal/referrals'
+                  : memberView === 'card'
+                  ? '/portal/card'
+                  : memberView === 'crm'
+                  ? '/portal/crm'
+                  : memberView === 'tasks'
+                  ? '/portal/tasks'
                   : '/portal/overview'
               }
               onNavigate={(path) => {
@@ -916,6 +942,12 @@ function AppContent() {
                   mode="member"
                   chamberName={resolvedChamberName}
                   chamberSlug={resolvedChamberSlug}
+                  onOpenMessages={(partnerId) => {
+                    setMemberView('messages');
+                    if (typeof window !== 'undefined') {
+                      window.history.pushState({}, '', `/portal/messages?with=${encodeURIComponent(partnerId)}`);
+                    }
+                  }}
                   onNavigateToPlans={() => {
                     setMemberView('plans');
                     if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/membership');
@@ -931,6 +963,23 @@ function AppContent() {
                     if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/membership');
                   }}
                 />
+              ) : memberView === 'messages' ? (
+                <MessagesPage
+                  onViewBusiness={(partner) => {
+                    setMemberView('directory');
+                    if (typeof window !== 'undefined') {
+                      window.history.pushState({}, '', `/portal/directory?q=${encodeURIComponent(partner.companyName || partner.name)}`);
+                    }
+                  }}
+                />
+              ) : memberView === 'crm' ? (
+                <CrmPipelinePage chamberSlug={resolvedChamberSlug} />
+              ) : memberView === 'tasks' ? (
+                <KanbanTasksPage />
+              ) : memberView === 'card' ? (
+                <DigitalCardPage />
+              ) : memberView === 'referrals' ? (
+                <ReferralsPage chamberName={resolvedChamberName} chamberSlug={resolvedChamberSlug} />
               ) : (
                 <MemberOverviewPage
                   onNavigateSection={(id) => {
@@ -1375,6 +1424,29 @@ function AppContent() {
             setActiveShell('public');
             if (typeof window !== 'undefined') {
               window.history.pushState({}, '', '/');
+            }
+          }}
+        />
+      )}
+
+      {/* Prompt 05.4: public digital business card (/card/:token) */}
+      {activeShell === 'card' && (
+        <PublicCardPage
+          token={decodeURIComponent((typeof window !== 'undefined' ? window.location.pathname : '').split('/')[2] || '')}
+          // Only the subdomain-resolved chamber (never a fallback chamber) — OD-002.
+          chamberSlug={selectedChamber?.slug}
+          ready={!isLoadingChambers}
+          isAuthenticated={isAuthenticated}
+          onConnect={(card) => {
+            if (isAuthenticated) {
+              setActiveShell('member');
+              setAiStage('traditional');
+              setMemberView('directory');
+              window.history.pushState({}, '', `/portal/directory?q=${encodeURIComponent(card.profile.company || card.profile.name)}`);
+            } else {
+              setActiveShell('public');
+              setPublicView('apply');
+              window.history.pushState({}, '', '/join');
             }
           }}
         />

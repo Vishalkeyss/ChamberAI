@@ -1,5 +1,6 @@
 import React from 'react';
 import { User, Mail, Phone, Briefcase, Globe } from 'lucide-react';
+import { EMAIL_PLACEHOLDER, PHONE_PLACEHOLDER } from '@/lib/placeholders';
 
 interface WizardStepContactProps {
   fullName: string;
@@ -80,7 +81,7 @@ export const WizardStepContact: React.FC<WizardStepContactProps> = ({
               type="email"
               value={email}
               onChange={(e) => onChange('email', e.target.value)}
-              placeholder="jane@company.com"
+              placeholder={EMAIL_PLACEHOLDER}
               className="w-full pl-9 pr-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-1 focus:ring-[#0B2447]"
             />
           </div>
@@ -100,7 +101,7 @@ export const WizardStepContact: React.FC<WizardStepContactProps> = ({
               type="tel"
               value={phone}
               onChange={(e) => onChange('phone', e.target.value)}
-              placeholder="+1 (555) 019-2834"
+              placeholder={PHONE_PLACEHOLDER}
               className="w-full pl-9 pr-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-1 focus:ring-[#0B2447]"
             />
           </div>

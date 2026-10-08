@@ -20,6 +20,7 @@ import { useAuth } from '@/hooks/useAuth';
 import type { RegisteredChamber } from '@/features/public/data/chambers';
 import { ResendCountdown } from './ResendCountdown';
 import { isValidPhoneNumber, isValidEmail, normalizePhoneNumber } from '@/lib/validation';
+import { EMAIL_PLACEHOLDER, PHONE_EXAMPLE } from '@/lib/placeholders';
 
 export interface MemberLoginModalProps {
   isOpen: boolean;
@@ -336,7 +337,7 @@ export const MemberLoginModal: React.FC<MemberLoginModalProps> = ({
                       }}
                       type="text"
                       inputMode="email"
-                      placeholder="you@business.com or +1 (555) 019-2834"
+                      placeholder={`${EMAIL_PLACEHOLDER} or ${PHONE_EXAMPLE}`}
                       className="w-full pl-9 pr-3 py-2.5 rounded-lg text-sm outline-none transition bg-background text-foreground border border-border focus:border-primary focus:ring-1 focus:ring-primary"
                       autoFocus
                     />

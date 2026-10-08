@@ -15,3 +15,8 @@ export * from './points-history.schema';
 export * from './invoices.schema';
 export * from './groups.schema';
 export * from './activity-logs.schema';
+export * from './messages.schema';
+export * from './referrals.schema';
+export * from './notifications.schema';
+export * from './chamber-settings.schema';
+export * from './crm.schema';

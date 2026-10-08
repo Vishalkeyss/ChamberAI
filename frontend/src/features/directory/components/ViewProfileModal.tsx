@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   Star,
   User,
+  UserPlus,
 } from 'lucide-react';
 import type { DirectoryBusiness } from '../services/directory.api';
 
@@ -20,6 +21,8 @@ interface ViewProfileModalProps {
   business: DirectoryBusiness | null;
   onSendMessage: (business: DirectoryBusiness) => void;
   onBookMeeting: (business: DirectoryBusiness) => void;
+  /** Prompt 05.5 quick conversion into the member's private CRM (member mode only). */
+  onAddToCrm?: (business: DirectoryBusiness) => void;
 }
 
 export const ViewProfileModal: React.FC<ViewProfileModalProps> = ({
@@ -28,6 +31,7 @@ export const ViewProfileModal: React.FC<ViewProfileModalProps> = ({
   business,
   onSendMessage,
   onBookMeeting,
+  onAddToCrm,
 }) => {
   if (!isOpen || !business) return null;
 
@@ -185,6 +189,19 @@ export const ViewProfileModal: React.FC<ViewProfileModalProps> = ({
           >
             Close
           </button>
+          {onAddToCrm && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onAddToCrm(business);
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl border border-border hover:bg-muted text-foreground transition cursor-pointer"
+            >
+              <UserPlus size={13} />
+              <span>Add to CRM</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {

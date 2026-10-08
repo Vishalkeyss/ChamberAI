@@ -28,6 +28,10 @@ export const users = sqliteTable('users', {
   aiCreditsLimit: integer('ai_credits_limit').notNull().default(5),
   personalApiKeyEncrypted: text('personal_api_key_encrypted'),
   personalApiProvider: text('personal_api_provider'),
+  // Prompt 05.4 digital business card (migration 0018)
+  cardToken: text('card_token').unique(),
+  cardThemeColor: text('card_theme_color'),
+  cardViewsCount: integer('card_views_count').notNull().default(0),
   lastLoginAt: text('last_login_at'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at'),

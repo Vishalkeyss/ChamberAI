@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ShieldAlert,
   Sparkles,
+  MessageCircle,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -44,6 +45,9 @@ export interface TopbarProps {
   onAccountSettings?: () => void;
   onSearch?: (query: string, scope: string) => void;
   onBackToAI?: () => void;
+  /** Prompt 05.2 §7.3: unread direct messages; the Messages button shows only when defined. */
+  unreadMessages?: number | null;
+  onOpenMessages?: () => void;
 }
 
 export const Topbar: React.FC<TopbarProps> = ({
@@ -57,6 +61,8 @@ export const Topbar: React.FC<TopbarProps> = ({
   onAccountSettings,
   onSearch,
   onBackToAI,
+  unreadMessages,
+  onOpenMessages,
 }) => {
   const { theme, setTheme, language, setLanguage } = useTheme();
   const [searchScope, setSearchScope] = useState<'members' | 'businesses' | 'events' | 'store'>('members');
@@ -279,6 +285,22 @@ export const Topbar: React.FC<TopbarProps> = ({
             <Monitor className="h-4 w-4" strokeWidth={2.25} />
           </button>
         </div>
+
+        {onOpenMessages && (
+          <button
+            type="button"
+            onClick={onOpenMessages}
+            className="relative flex h-9 w-9 items-center justify-center rounded-full bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition border border-border"
+            aria-label={unreadMessages ? `Messages, ${unreadMessages} unread` : "Messages"}
+          >
+            <MessageCircle className="h-4 w-4" strokeWidth={2.2} />
+            {!!unreadMessages && (
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-destructive text-white text-[10px] font-bold flex items-center justify-center">
+                {unreadMessages > 99 ? "99+" : unreadMessages}
+              </span>
+            )}
+          </button>
+        )}
 
         {/* Notification Bell with solid red dot matching reference */}
         <button

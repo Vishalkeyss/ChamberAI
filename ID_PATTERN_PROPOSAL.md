@@ -80,6 +80,6 @@ Implemented now (tables that have code today) are marked ✅. Other tables must 
 | member_retention_scores | `MRS` | | governance_meetings | `GMTG` |
 | business_leads / business_lead_proposals | `LEAD` / `LPROP` | | governance_resolutions | `GRES` |
 | contact_requests | `CREQ` | | governance_votes / governance_documents | `GVOTE` / `GDOC` |
-| crm_contacts | `CRM` | | support_tickets / support_ticket_messages | `STKT` / `STKM` |
+| crm_contacts / crm_contact_activities | `CRM` / `CRMA` | | support_tickets / support_ticket_messages | `STKT` / `STKM` |
 | ai_site_design / ai_agent_capabilities | `AISD` / `AICAP` | | ai_chat_history | `AICH` |
 | automation_workflows / _steps / _recipients | `AUTO` / `ASTEP` / `AREC` | | import_history | `IMP` |

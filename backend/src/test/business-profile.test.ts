@@ -68,6 +68,9 @@ function createSqliteD1() {
       personal_api_key_encrypted TEXT,
       personal_api_provider TEXT,
       last_login_at TEXT,
+      card_token TEXT UNIQUE,
+      card_theme_color TEXT,
+      card_views_count INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT
     );

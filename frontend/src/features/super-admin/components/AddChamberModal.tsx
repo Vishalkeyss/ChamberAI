@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Building2, Globe, Sparkles, Plus, Loader2, AlertCircle, Phone } from 'lucide-react';
 import { provisionChamber } from '../services/super-chambers.api';
 import { isValidPhoneNumber, isValidEmail, normalizePhoneNumber } from '@/lib/validation';
+import { EMAIL_PLACEHOLDER, PHONE_PLACEHOLDER } from '@/lib/placeholders';
 
 interface AddChamberModalProps {
   isOpen: boolean;
@@ -192,7 +193,7 @@ export const AddChamberModal: React.FC<AddChamberModalProps> = ({
                   type="email"
                   value={adminEmail}
                   onChange={(e) => setAdminEmail(e.target.value)}
-                  placeholder="admin@chambername.org"
+                  placeholder={EMAIL_PLACEHOLDER}
                   className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary focus:border-primary transition"
                   required
                 />
@@ -205,7 +206,7 @@ export const AddChamberModal: React.FC<AddChamberModalProps> = ({
                   type="tel"
                   value={adminPhone}
                   onChange={(e) => setAdminPhone(e.target.value)}
-                  placeholder="+1 (555) 019-2834"
+                  placeholder={PHONE_PLACEHOLDER}
                   className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary focus:border-primary transition"
                 />
               </div>
