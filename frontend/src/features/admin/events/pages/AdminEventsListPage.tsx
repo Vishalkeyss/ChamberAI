@@ -15,8 +15,11 @@ import {
   Tag,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { fetchEvents, type EventItem } from '@/features/events/services/events.api';
+import { fetchEvents, fetchChamberCurrency, formatMoney, type EventItem } from '@/features/events/services/events.api';
 import { EventsCalendarGrid } from '@/features/events/components/EventsCalendarGrid';
+import { useAuth } from '@/hooks/useAuth';
+import { AdminEventWizardModal } from '../components/AdminEventWizardModal';
+import { deleteAdminEvent } from '../services/admin-events.api';
 
 interface AdminEventsListPageProps {
   chamberSlug?: string;
@@ -41,6 +44,15 @@ export const AdminEventsListPage: React.FC<AdminEventsListPageProps> = ({
   const [sortMode, setSortMode] = useState<'az' | 'date'>('date');
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currency, setCurrency] = useState<string | null>(null);
+  useEffect(() => {
+    fetchChamberCurrency(chamberSlug).then(setCurrency).catch(() => setCurrency(null));
+  }, [chamberSlug]);
+  // Prompt 04.6 wizard: undefined = closed, null = create, string = edit that event
+  const [wizardEventId, setWizardEventId] = useState<string | null | undefined>(undefined);
+  const { hasRole } = useAuth();
+  // Group admins manage attendees only; they cannot create, edit or delete events (backend-enforced too).
+  const canManageEvents = hasRole(['full_admin', 'chapter_admin']);
 
   // Month helper e.g. "Jul 2026"
   const monthOf = (dateStr: string) => {
@@ -59,7 +71,9 @@ export const AdminEventsListPage: React.FC<AdminEventsListPageProps> = ({
         timeframe: tab === 'Upcoming' ? 'upcoming' : 'past',
         limit: 100,
       },
-      chamberSlug
+      chamberSlug,
+      // Authenticated route: admins also see staff-only events (public route hides them).
+      true
     )
       .then((res) => {
         setEvents(res.events || []);
@@ -104,11 +118,15 @@ export const AdminEventsListPage: React.FC<AdminEventsListPageProps> = ({
 
   const filtersActive = q.trim() || categoryFilter !== 'Any Category' || monthFilter !== 'Any Month';
 
-  const handleDelete = (e: EventItem, evtClick: React.MouseEvent) => {
+  const handleDelete = async (e: EventItem, evtClick: React.MouseEvent) => {
     evtClick.stopPropagation();
-    if (window.confirm(`Are you sure you want to delete "${e.title}"?`)) {
-      setEvents((prev) => prev.filter((item) => item.id !== e.id));
-      toast.success('Event deleted');
+    if (!window.confirm(`Are you sure you want to delete "${e.title}"? Events with registrations are cancelled instead.`)) return;
+    try {
+      const res = await deleteAdminEvent(e.id, chamberSlug);
+      toast.success(res.deleted ? 'Event deleted' : 'Event has registrations, so it was cancelled');
+      loadData();
+    } catch (err: any) {
+      toast.error(err.message || 'Could not delete the event');
     }
   };
 
@@ -161,16 +179,15 @@ export const AdminEventsListPage: React.FC<AdminEventsListPageProps> = ({
             </button>
           </div>
 
+          {canManageEvents && (
           <button
-            onClick={() => {
-              if (onCreateEvent) onCreateEvent();
-              else toast.info('Event Creation Wizard (Prompt 04.6) is scheduled next in the roadmap.');
-            }}
+            onClick={() => (onCreateEvent ? onCreateEvent() : setWizardEventId(null))}
             className="px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 text-white transition-all cursor-pointer shadow-xs"
             style={{ background: '#0A2540' }}
           >
             <Plus size={15} /> Create Event
           </button>
+          )}
         </div>
       </div>
 
@@ -296,7 +313,14 @@ export const AdminEventsListPage: React.FC<AdminEventsListPageProps> = ({
                     month: 'short',
                     year: 'numeric',
                   });
-                  const feeDisplay = e.isPaid && e.registrationFee > 0 ? `$${e.registrationFee}` : 'Free';
+                  const pricedTiers = (e.ticketTypes || []).map((t) => t.price).filter((p) => p > 0);
+                  const feeDisplay = !e.isPaid
+                    ? 'Free'
+                    : pricedTiers.length
+                      ? `From ${formatMoney(Math.min(...pricedTiers), currency)}`
+                      : e.registrationFee > 0
+                        ? formatMoney(e.registrationFee, currency)
+                        : 'Free';
 
                   return (
                     <div
@@ -379,12 +403,14 @@ export const AdminEventsListPage: React.FC<AdminEventsListPageProps> = ({
                               <ScanLine size={14} /> QR Check-In
                             </button>
 
+                            {canManageEvents && (
+                            <>
                             <button
                               type="button"
                               onClick={(ev) => {
                                 ev.stopPropagation();
                                 if (onEdit) onEdit(e);
-                                else onSelectEvent(e.id);
+                                else setWizardEventId(e.id);
                               }}
                               className="px-3.5 py-1.5 rounded-lg border border-[#E5E7EB] hover:bg-gray-50 text-xs font-semibold text-[#111827] cursor-pointer"
                             >
@@ -398,6 +424,8 @@ export const AdminEventsListPage: React.FC<AdminEventsListPageProps> = ({
                             >
                               <Trash2 size={13} /> Delete
                             </button>
+                            </>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -408,6 +436,17 @@ export const AdminEventsListPage: React.FC<AdminEventsListPageProps> = ({
             </div>
           </div>
         </div>
+      )}
+      {wizardEventId !== undefined && (
+        <AdminEventWizardModal
+          eventId={wizardEventId}
+          chamberSlug={chamberSlug}
+          onClose={() => setWizardEventId(undefined)}
+          onSaved={() => {
+            setWizardEventId(undefined);
+            loadData();
+          }}
+        />
       )}
     </div>
   );

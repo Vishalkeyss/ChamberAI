@@ -27,6 +27,19 @@ export interface EventItem {
   status: string | null;
   isSoldOut: boolean;
   spotsRemaining: number | null;
+  allowNonMemberRegistration: number;
+  ticketTypes: EventTicketType[];
+}
+
+/** Prompt 04.3: ticket tier returned with each event */
+export interface EventTicketType {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  allowPayLater: number;
+  qtyLimit: number | null;
+  qtyRemaining: number | null;
 }
 
 export interface EventsMeta {
@@ -34,6 +47,8 @@ export interface EventsMeta {
   page: number;
   limit: number;
   totalPages: number;
+  /** Prompt 04.3 §8: value of one loyalty point, supplied by the backend */
+  pointRedemptionValue?: number;
 }
 
 export interface EventsResponse {
@@ -213,13 +228,74 @@ export interface RegisterEventInput {
   };
 }
 
+export interface RegistrationPricing {
+  basePrice: number;
+  promoDiscount: number;
+  pointsDiscount: number;
+  redeemedPoints: number;
+  totalPayable: number;
+  currency: string | null;
+}
+
 export interface RegistrationResult {
   registrationId: string;
   status: 'confirmed' | 'waitlisted';
   isWaitlisted: boolean;
   waitlistPosition: number | null;
-  guestName: string;
-  guestEmail: string;
+  paymentStatus: 'paid' | 'unpaid' | 'pay_later';
+  qrCodeHash: string | null;
+  invoiceId: string | null;
+  totalPaid: number;
+  amountDue: number;
+  pricing: RegistrationPricing | null;
+  attendee: { name: string; email: string };
+}
+
+export interface PromoValidationResult {
+  valid: boolean;
+  discountType: 'percentage' | 'flat';
+  discountValue: number;
+  discountAmount: number;
+}
+
+/**
+ * Chamber's configured currency (chamber_settings.default_currency via GET /public/settings).
+ */
+export async function fetchChamberCurrency(chamberSlug?: string): Promise<string | null> {
+  const res = await fetch(`${API_BASE}/api/v1/public/settings`, { headers: getAuthHeaders(chamberSlug) });
+  if (!res.ok) return null;
+  const json = await res.json().catch(() => ({}));
+  return json?.data?.currency || null;
+}
+
+/** Formats money in the chamber currency; plain number when the currency is unknown. */
+export function formatMoney(amount: number, currency: string | null): string {
+  if (!currency) return amount.toFixed(2);
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount);
+  } catch {
+    return `${currency} ${amount.toFixed(2)}`;
+  }
+}
+
+/**
+ * POST /api/v1/events/:id/validate-promo (members, Prompt 04.3 §9.1)
+ */
+export async function validateEventPromo(
+  eventId: string,
+  input: { code: string; ticketTypeId?: string },
+  chamberSlug?: string
+): Promise<PromoValidationResult> {
+  const res = await fetch(`${API_BASE}/api/v1/events/${eventId}/validate-promo`, {
+    method: 'POST',
+    headers: getAuthHeaders(chamberSlug),
+    body: JSON.stringify(input),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(json.error?.message || json.message || 'Invalid or expired code');
+  }
+  return json.data;
 }
 
 /**

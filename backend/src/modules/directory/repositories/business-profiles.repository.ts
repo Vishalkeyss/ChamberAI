@@ -15,6 +15,7 @@ import type {
   InviteRepresentativeInput,
 } from '../types';
 import { generatePrefixedId } from '../../../core/shared/crypto';
+import { newId } from '../../../core/shared/ids';
 
 export class BusinessProfilesRepository {
   /**
@@ -309,7 +310,7 @@ export class BusinessProfilesRepository {
     let userId = existingUser?.id;
 
     if (!existingUser) {
-      userId = generatePrefixedId('usr');
+      userId = await newId(d1, 'users', 'USR', { chamberId });
       const verificationToken = `mvt_${generatePrefixedId('tok')}`;
       const fullName = `${input.firstName} ${input.lastName}`.trim();
 
@@ -339,7 +340,7 @@ export class BusinessProfilesRepository {
       )
       .limit(1);
 
-    const memberId = existingMember?.id || generatePrefixedId('bm');
+    const memberId = existingMember?.id || (await newId(d1, 'business_members', 'BM', { chamberId }));
 
     if (existingMember) {
       await db

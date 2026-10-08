@@ -4,9 +4,8 @@ import type { AppVariables } from '../../../core/context';
 import { requireAuth, requireRole } from '../../../core/middleware/auth.middleware';
 import { successResponse } from '../../../core/shared/response';
 import { AppError, ErrorCodes } from '../../../core/shared/errors';
-import { eventsQuerySchema, eventRegisterSchema } from '../validation/events.validation';
+import { eventsQuerySchema } from '../validation/events.validation';
 import { EventsRepository } from '../repositories/events.repository';
-import { EventRegistrationsRepository } from '../repositories/event-registrations.repository';
 
 export const memberEventsRouter = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -98,38 +97,4 @@ memberEventsRouter.get('/events/filters', requireRole(allowedRoles), async (c) =
   return c.json(successResponse(filters, { requestId }));
 });
 
-/**
- * POST /api/v1/events/:id/register
- * Allows authenticated members to dynamically register or waitlist for events in the database.
- */
-memberEventsRouter.post('/events/:id/register', requireRole(allowedRoles), async (c) => {
-  const chamberId = c.get('chamberId');
-  const user = c.get('user');
-  const eventId = c.req.param('id');
-  const requestId = c.get('requestId');
-
-  if (!chamberId || !user || !eventId) {
-    throw new AppError(ErrorCodes.BAD_REQUEST, 'Authentication, event ID and chamber context required', 400);
-  }
-
-  const body = await c.req.json().catch(() => ({}));
-  const parsed = eventRegisterSchema.safeParse(body);
-  if (!parsed.success) {
-    throw new AppError(
-      ErrorCodes.VALIDATION_ERROR,
-      parsed.error.errors[0]?.message || 'Invalid registration details',
-      422
-    );
-  }
-
-  const result = await EventRegistrationsRepository.registerEvent(
-    c.env.DB,
-    chamberId,
-    eventId as string,
-    String(user.id),
-    parsed.data
-  );
-
-  return c.json(successResponse(result, { requestId }), 201);
-});
 

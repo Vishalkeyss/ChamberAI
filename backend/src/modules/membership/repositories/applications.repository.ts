@@ -1,5 +1,6 @@
 import type { SubmitApplicationInput, ResubmitApplicationInput } from '../validation/applications.validation';
-import { generatePrefixedId, generateTrackingCode, generateSessionToken, generateMemberDisplayId } from '../../../core/shared/crypto';
+import { generateTrackingCode, generateSessionToken, generateMemberDisplayId } from '../../../core/shared/crypto';
+import { newId } from '../../../core/shared/ids';
 
 export interface ApplicationRecord {
   id: string;
@@ -46,7 +47,7 @@ export class ApplicationsRepository {
     input: SubmitApplicationInput,
     autoApprove = false
   ): Promise<{ id: string; trackingCode: string; status: 'pending' | 'approved'; chargeResult?: ApprovalResult }> {
-    const id = generatePrefixedId('app');
+    const id = await newId(db, 'applications', 'APP', { chamberId });
     const trackingCode = await this.generateUniqueTrackingCode(db);
     const status: 'pending' | 'approved' = autoApprove ? 'approved' : 'pending';
     const kanbanStage = autoApprove ? 'approved' : 'new';
@@ -91,7 +92,7 @@ export class ApplicationsRepository {
       .first<{ id: string }>();
 
     if (adminUser?.id) {
-      const logId = generatePrefixedId('act');
+      const logId = await newId(db, 'activity_logs', 'ACT', { chamberId, suffixLength: 6, skipUniqueCheck: true });
       statements.push(
         db
           .prepare(
@@ -245,7 +246,7 @@ export class ApplicationsRepository {
       .first<{ id: string }>();
 
     if (adminUser?.id) {
-      const logId = generatePrefixedId('act');
+      const logId = await newId(db, 'activity_logs', 'ACT', { chamberId, suffixLength: 6, skipUniqueCheck: true });
       statements.push(
         db
           .prepare(
@@ -386,7 +387,7 @@ export class ApplicationsRepository {
     const statements: D1PreparedStatement[] = [];
 
     if (adminUserId) {
-      const logId = generatePrefixedId('act');
+      const logId = await newId(db, 'activity_logs', 'ACT', { chamberId, suffixLength: 6, skipUniqueCheck: true });
       statements.push(
         db
           .prepare(
@@ -415,7 +416,7 @@ export class ApplicationsRepository {
 
     let userId = existingUser?.id;
     if (!userId) {
-      userId = generatePrefixedId('usr');
+      userId = await newId(db, 'users', 'USR', { chamberId });
       const token = generateSessionToken();
       statements.push(
         db
@@ -449,7 +450,7 @@ export class ApplicationsRepository {
     }
 
     // 2. Role assignment for member
-    const uraId = generatePrefixedId('ura');
+    const uraId = await newId(db, 'user_role_assignments', 'URA', { chamberId });
     statements.push(
       db
         .prepare(
@@ -468,7 +469,7 @@ export class ApplicationsRepository {
     );
 
     // 3. Business profile
-    const bizId = generatePrefixedId('biz');
+    const bizId = await newId(db, 'business_profiles', 'BIZ', { chamberId });
     statements.push(
       db
         .prepare(
@@ -488,7 +489,7 @@ export class ApplicationsRepository {
     );
 
     // 4. Business member link
-    const bmId = generatePrefixedId('bm');
+    const bmId = await newId(db, 'business_members', 'BM', { chamberId });
     statements.push(
       db
         .prepare(
@@ -507,7 +508,7 @@ export class ApplicationsRepository {
     );
 
     // 5. Chamber membership
-    const cmId = generatePrefixedId('mbr');
+    const cmId = await newId(db, 'chamber_memberships', 'MEM', { chamberId });
     const displayMemberId = generateMemberDisplayId();
     statements.push(
       db
@@ -576,7 +577,7 @@ export class ApplicationsRepository {
     let paidAt: string | null = null;
 
     if (pm && pm.lastFour) {
-      pmId = generatePrefixedId('pm');
+      pmId = await newId(db, 'payment_methods', 'PM', { chamberId });
       statements.push(
         db
           .prepare(
@@ -599,7 +600,7 @@ export class ApplicationsRepository {
       );
     }
 
-    const invId = generatePrefixedId('inv');
+    const invId = await newId(db, 'invoices', 'INV', { chamberId });
     const invoiceNumber = `INV-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
 
     if (planPrice > 0) {
@@ -647,7 +648,7 @@ export class ApplicationsRepository {
     );
 
     if (charged) {
-      const chargeLogId = generatePrefixedId('act');
+      const chargeLogId = await newId(db, 'activity_logs', 'ACT', { chamberId, suffixLength: 6, skipUniqueCheck: true });
       statements.push(
         db
           .prepare(
@@ -672,24 +673,38 @@ export class ApplicationsRepository {
     }
 
     // Atomically claim the application: only one approval can win, and only from
-    // a non-rejected, not-yet-provisioned state.
+    // a non-rejected, not-yet-provisioned state. converted_user_id is NOT set here:
+    // it references users(id) and a new user only exists after the batch below.
     const claim = await db
       .prepare(
         `UPDATE applications
-         SET status = 'approved',
-             admin_notes = ?,
-             kanban_stage = 'approved',
-             converted_user_id = ?,
+         SET kanban_stage = 'provisioning',
              updated_at = ?
          WHERE chamber_id = ? AND id = ?
            AND converted_user_id IS NULL
+           AND kanban_stage IS NOT 'provisioning'
            AND status IN ('pending', 'changes_requested', 'approved')`
       )
-      .bind(adminNotes || null, userId, now, chamberId, id)
+      .bind(now, chamberId, id)
       .run();
     if (!claim.meta?.changes) {
       return failed;
     }
+
+    // Finalize inside the same batch, after the user row has been inserted.
+    statements.push(
+      db
+        .prepare(
+          `UPDATE applications
+           SET status = 'approved',
+               admin_notes = ?,
+               kanban_stage = 'approved',
+               converted_user_id = ?,
+               updated_at = ?
+           WHERE chamber_id = ? AND id = ?`
+        )
+        .bind(adminNotes || null, userId, now, chamberId, id)
+    );
 
     try {
       await db.batch(statements);
@@ -746,7 +761,7 @@ export class ApplicationsRepository {
     ];
 
     if (adminUserId) {
-      const logId = generatePrefixedId('act');
+      const logId = await newId(db, 'activity_logs', 'ACT', { chamberId, suffixLength: 6, skipUniqueCheck: true });
       statements.push(
         db
           .prepare(
@@ -799,7 +814,7 @@ export class ApplicationsRepository {
     ];
 
     if (adminUserId) {
-      const logId = generatePrefixedId('act');
+      const logId = await newId(db, 'activity_logs', 'ACT', { chamberId, suffixLength: 6, skipUniqueCheck: true });
       statements.push(
         db
           .prepare(

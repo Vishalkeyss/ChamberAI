@@ -1,10 +1,12 @@
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, sql, desc, asc, like, or, inArray } from 'drizzle-orm';
-import { events, chapters } from '../../../db/schema';
+import { events, chapters, eventTicketTypes } from '../../../db/schema';
 import type { EventsQueryParams } from '../validation/events.validation';
+import { POINT_REDEMPTION_VALUE } from '../services/event-registration.service';
 import {
   type EventListItem,
   type EventsListResponse,
+  type EventTicketTypeItem,
   getEventCapacityStatus,
 } from '../types/events.types';
 
@@ -167,6 +169,30 @@ export class EventsRepository {
       .limit(limit)
       .offset(offset);
 
+    // Ticket tiers for the listed events (one query, tenant-scoped)
+    const eventIds = rows.map((r) => r.event.id);
+    const ticketRows = eventIds.length
+      ? await db
+          .select()
+          .from(eventTicketTypes)
+          .where(and(eq(eventTicketTypes.chamberId, chamberId), inArray(eventTicketTypes.eventId, eventIds)))
+          .orderBy(asc(eventTicketTypes.price), asc(eventTicketTypes.createdAt))
+      : [];
+    const ticketsByEvent = new Map<string, EventTicketTypeItem[]>();
+    for (const t of ticketRows) {
+      const list = ticketsByEvent.get(t.eventId) || [];
+      list.push({
+        id: t.id,
+        name: t.name,
+        description: t.description,
+        price: t.price,
+        allowPayLater: t.allowPayLater,
+        qtyLimit: t.qtyLimit,
+        qtyRemaining: t.qtyLimit != null ? Math.max(0, t.qtyLimit - t.qtySold) : null,
+      });
+      ticketsByEvent.set(t.eventId, list);
+    }
+
     const data: EventListItem[] = rows.map(({ event: e, chapterName }) => {
       const isVirtualResolved =
         (e.venue && e.venue.toLowerCase().includes('virtual')) ||
@@ -211,6 +237,8 @@ export class EventsRepository {
         status: e.status,
         isSoldOut: capacity.isSoldOut,
         spotsRemaining: capacity.spotsRemaining,
+        allowNonMemberRegistration: e.allowNonMemberRegistration,
+        ticketTypes: ticketsByEvent.get(e.id) || [],
       };
     });
 
@@ -223,6 +251,7 @@ export class EventsRepository {
         page,
         limit,
         totalPages,
+        pointRedemptionValue: POINT_REDEMPTION_VALUE,
       },
     };
   }

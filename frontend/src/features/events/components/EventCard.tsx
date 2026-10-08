@@ -247,19 +247,19 @@ export const EventCard: React.FC<EventCardProps> = ({
         <div className="flex items-center gap-2 pt-1">
           {timeframe === 'upcoming' ? (
             <>
+              {/* Full events remain registrable as waitlist (Prompt 04.3 §7.2) */}
               <button
                 type="button"
-                disabled={isSoldOut}
                 onClick={() => onRegister && onRegister(event)}
                 className={cn(
                   'flex-1 text-xs font-semibold py-2.5 px-3 rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 shadow-xs',
                   isSoldOut
-                    ? 'bg-gray-200 dark:bg-muted text-gray-400 cursor-not-allowed'
+                    ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 dark:bg-amber-950/40 dark:text-amber-300'
                     : 'bg-[#0B1E3B] hover:bg-[#102A43] text-white'
                 )}
               >
-                <span>{isSoldOut ? 'Sold Out' : 'Register Now'}</span>
-                {!isSoldOut && <ArrowRight size={13} />}
+                <span>{isSoldOut ? 'Join Waitlist' : 'Register Now'}</span>
+                <ArrowRight size={13} />
               </button>
 
               <button

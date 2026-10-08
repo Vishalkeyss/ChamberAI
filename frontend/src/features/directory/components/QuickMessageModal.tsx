@@ -25,21 +25,8 @@ export const QuickMessageModal: React.FC<QuickMessageModalProps> = ({
   const contactTitle = contact?.jobTitle || 'Primary Representative';
 
   const handleSend = (e: React.FormEvent) => {
+    // No messaging API yet (Prompt 05.2) — never report a fake success.
     e.preventDefault();
-    if (!message.trim()) return;
-
-    setSending(true);
-    // Simulate direct message dispatch (will integrate with Prompt 05.2 chat API)
-    setTimeout(() => {
-      setSending(false);
-      setSentSuccess(true);
-      setTimeout(() => {
-        setSentSuccess(false);
-        setSubject('');
-        setMessage('');
-        onClose();
-      }, 1500);
-    }, 600);
   };
 
   const handleClose = () => {
@@ -125,7 +112,7 @@ export const QuickMessageModal: React.FC<QuickMessageModalProps> = ({
 
             <div className="flex items-center justify-between pt-2">
               <span className="text-[11px] text-muted-foreground">
-                Delivered via Chamber Direct Connect
+                Direct messaging is coming soon
               </span>
               <div className="flex items-center gap-2">
                 <button
@@ -137,7 +124,8 @@ export const QuickMessageModal: React.FC<QuickMessageModalProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={sending || !message.trim()}
+                  disabled
+                  title="Available once direct messaging (Prompt 05.2) is live"
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition cursor-pointer shadow-xs"
                 >
                   {sending ? (

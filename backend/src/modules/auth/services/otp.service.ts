@@ -1,6 +1,7 @@
 import { AppContext } from '../../../core/context';
 import { AppError, ErrorCodes } from '../../../core/shared/errors';
-import { generateSecureOtp, hashOtp, generateSessionToken, generatePrefixedId } from '../../../core/shared/crypto';
+import { generateSecureOtp, hashOtp, generateSessionToken } from '../../../core/shared/crypto';
+import { newId } from '../../../core/shared/ids';
 import {
   RequestOtpInput,
   VerifyOtpInput,
@@ -11,7 +12,6 @@ import {
 import { sendOtpEmail } from './email-delivery.service';
 import { sendOtpSms } from './sms-delivery.service';
 import { SessionService, type CachedSessionRole } from './session.service';
-import { isLocalDevRequest } from '../../../core/shared/dev-guard';
 
 function splitName(fullName?: string | null): { firstName: string; lastName: string } {
   if (!fullName) return { firstName: '', lastName: '' };
@@ -152,7 +152,7 @@ export class OtpService {
 
         if (approvedApp) {
           const now = new Date().toISOString();
-          const newUserId = generatePrefixedId('usr');
+          const newUserId = await newId(c.env.DB, 'users', 'USR', { chamberId: approvedApp.chamber_id });
           const token = generateSessionToken();
 
           await c.env.DB.batch([
@@ -176,7 +176,7 @@ export class OtpService {
                 id, chamber_id, user_id, role_id, scope_type, scope_id, granted_by, granted_at, is_active
               ) VALUES (?, ?, ?, 'member', 'chamber', ?, ?, ?, 1)`
             ).bind(
-              generatePrefixedId('ura'),
+              await newId(c.env.DB, 'user_role_assignments', 'URA', { chamberId: approvedApp.chamber_id }),
               approvedApp.chamber_id,
               newUserId,
               approvedApp.chamber_id,
@@ -297,7 +297,7 @@ export class OtpService {
     // 4. Generate Secure 6-Digit OTP and Hash
     const code = generateSecureOtp();
     const otpHash = await hashOtp(code);
-    const otpId = generatePrefixedId('otp');
+    const otpId = await newId(c.env.DB, 'otp_codes', 'OTP', { chamberId, suffixLength: 8 });
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
 
     // 5. Delete all previous OTPs for this identifier+portal — one active code at a time
@@ -443,10 +443,10 @@ export class OtpService {
       );
     }
 
-    // 5. Compare cryptographic hash (with local dev DX convenience fallback 123456)
-    const isDevBypass = isLocalDevRequest(c) && incomingCode === '123456';
+    // 5. Compare cryptographic hash (no static/dev bypass code — local dev reads the
+    //    generated code from the terminal log in email/sms delivery services)
     const computedHash = await hashOtp(incomingCode);
-    if (!isDevBypass && !timingSafeEqualStr(computedHash, record.otp_hash)) {
+    if (!timingSafeEqualStr(computedHash, record.otp_hash)) {
       const remaining = record.max_attempts - newAttempts;
       if (remaining <= 0) {
         await c.env.DB.prepare(`DELETE FROM otp_codes WHERE id = ?`)
@@ -680,7 +680,7 @@ export class OtpService {
 
     // 9. Audit log entry for login (non-fatal)
     try {
-      const auditId = generatePrefixedId('aud');
+      const auditId = await newId(c.env.DB, 'platform_audit_logs', 'PAUD', { chamberId: record.chamber_id || chamberId, suffixLength: 6, skipUniqueCheck: true });
       await c.env.DB.prepare(
         `INSERT INTO platform_audit_logs (
            id, chamber_id, actor_id, actor_role, actor_name, action, target_type, target_id, ip_address, user_agent, created_at

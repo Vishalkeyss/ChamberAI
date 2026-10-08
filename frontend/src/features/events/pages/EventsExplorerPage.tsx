@@ -7,20 +7,18 @@ import {
   CalendarCheck2,
   History,
   Building,
-  CheckCircle2,
   X,
   Plus,
-  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { EventCard } from '../components/EventCard';
 import { EventsCalendarGrid } from '../components/EventsCalendarGrid';
 import { EventsFilterSidebar } from '../components/EventsFilterSidebar';
+import { EventRegistrationModal } from '../components/EventRegistrationModal';
 import {
   fetchEvents,
   fetchEventsFilters,
-  registerForEvent,
   type EventItem,
   type EventsMeta,
   type EventsFilters,
@@ -62,11 +60,6 @@ export const EventsExplorerPage: React.FC<EventsExplorerPageProps> = ({
   const [selectedEvent, setSelectedEvent] = useState<EventItem | null>(null);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [isRecapModalOpen, setIsRecapModalOpen] = useState(false);
-  const [guestName, setGuestName] = useState('');
-  const [guestEmail, setGuestEmail] = useState('');
-  const [isRegisteredSuccess, setIsRegisteredSuccess] = useState(false);
-  const [isSubmittingRegistration, setIsSubmittingRegistration] = useState(false);
-  const [registeredStatus, setRegisteredStatus] = useState<'confirmed' | 'waitlisted'>('confirmed');
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -158,12 +151,8 @@ export const EventsExplorerPage: React.FC<EventsExplorerPageProps> = ({
   };
 
   const handleRegisterClick = (event: EventItem) => {
-    if (event.isSoldOut) {
-      toast.error('This event is currently sold out.');
-      return;
-    }
+    // Full events stay registrable: the server places the registrant on the waitlist (§7.2).
     setSelectedEvent(event);
-    setIsRegisteredSuccess(false);
     setIsRegisterModalOpen(true);
   };
 
@@ -187,54 +176,6 @@ export const EventsExplorerPage: React.FC<EventsExplorerPageProps> = ({
     }
   };
 
-  const handleConfirmRegistration = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedEvent) return;
-    if (!guestName.trim() || !guestEmail.trim()) {
-      toast.error('Please provide your name and email');
-      return;
-    }
-
-    try {
-      setIsSubmittingRegistration(true);
-      const res = await registerForEvent(
-        selectedEvent.id,
-        {
-          guestDetails: {
-            name: guestName.trim(),
-            email: guestEmail.trim(),
-          },
-        },
-        chamberSlug,
-        isMember
-      );
-
-      setRegisteredStatus(res.status);
-      setIsRegisteredSuccess(true);
-      if (res.status === 'waitlisted') {
-        toast.info(
-          `Event is at capacity. You are placed on the waitlist at position #${res.waitlistPosition || 1}.`
-        );
-      } else {
-        toast.success(
-          `You are registered for "${selectedEvent.title}"! Confirmation registered in database.`
-        );
-      }
-
-      // Dynamically reload events from DB to update registeredCount & spotsRemaining
-      loadEvents(currentPage);
-
-      setTimeout(() => {
-        setIsRegisterModalOpen(false);
-        setGuestName('');
-        setGuestEmail('');
-      }, 2000);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to complete registration');
-    } finally {
-      setIsSubmittingRegistration(false);
-    }
-  };
 
   return (
     <div className="w-full pb-16">
@@ -529,96 +470,16 @@ export const EventsExplorerPage: React.FC<EventsExplorerPageProps> = ({
         </div>
       </div>
 
-      {/* Quick Registration Modal */}
+      {/* Registration & Checkout Modal (Prompt 04.3) */}
       {isRegisterModalOpen && selectedEvent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="relative w-full max-w-md bg-card rounded-2xl border border-border shadow-2xl p-6">
-            <button
-              type="button"
-              onClick={() => setIsRegisterModalOpen(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer"
-            >
-              <X size={16} />
-            </button>
-
-            {isRegisteredSuccess ? (
-              <div className="text-center py-6">
-                <CheckCircle2 size={44} className="text-emerald-500 mx-auto mb-3" />
-                <h3 className="text-base font-bold text-foreground">
-                  {registeredStatus === 'waitlisted' ? 'Added to Waitlist!' : 'Registration Confirmed!'}
-                </h3>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {registeredStatus === 'waitlisted'
-                    ? `You have been added to the waitlist for ${selectedEvent.title}. You'll be notified if a seat opens.`
-                    : `We've reserved your spot for ${selectedEvent.title}. Recorded dynamically in database.`}
-                </p>
-              </div>
-            ) : (
-              <form onSubmit={handleConfirmRegistration}>
-                <div className="mb-4">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-primary">
-                    {selectedEvent.category || 'Event'}
-                  </span>
-                  <h3 className="text-base font-bold text-foreground mt-0.5">
-                    Register for {selectedEvent.title}
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {selectedEvent.venue || selectedEvent.city || 'Chamber Event'}
-                    {selectedEvent.isPaid ? ` · $${selectedEvent.registrationFee.toFixed(2)}` : ' · Free Event'}
-                  </p>
-                </div>
-
-                <div className="space-y-3.5 mb-5">
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1">
-                      Full Name *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Jane Doe"
-                      value={guestName}
-                      onChange={(e) => setGuestName(e.target.value)}
-                      className="w-full h-10 px-3 rounded-xl border border-border bg-background text-xs focus:ring-2 focus:ring-primary/20 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-foreground mb-1">
-                      Email Address *
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      placeholder="jane@company.com"
-                      value={guestEmail}
-                      onChange={(e) => setGuestEmail(e.target.value)}
-                      className="w-full h-10 px-3 rounded-xl border border-border bg-background text-xs focus:ring-2 focus:ring-primary/20 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsRegisterModalOpen(false)}
-                    disabled={isSubmittingRegistration}
-                    className="flex-1 py-2.5 rounded-xl border border-border text-xs font-semibold hover:bg-muted cursor-pointer disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmittingRegistration}
-                    className="flex-1 py-2.5 rounded-xl bg-[#0B1E3B] hover:bg-[#102A43] text-white text-xs font-semibold shadow-xs cursor-pointer inline-flex items-center justify-center gap-2 disabled:opacity-70"
-                  >
-                    {isSubmittingRegistration && <Loader2 size={13} className="animate-spin" />}
-                    Confirm Registration
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
+        <EventRegistrationModal
+          event={selectedEvent}
+          isMember={isMember}
+          chamberSlug={chamberSlug}
+          pointRedemptionValue={meta.pointRedemptionValue}
+          onClose={() => setIsRegisterModalOpen(false)}
+          onRegistered={() => loadEvents(currentPage)}
+        />
       )}
 
       {/* Past Event Recap Modal */}

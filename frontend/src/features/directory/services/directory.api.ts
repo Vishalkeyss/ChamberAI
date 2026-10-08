@@ -186,11 +186,8 @@ export async function fetchDirectoryListings(
       },
     };
   } catch (err) {
-    console.error('Error fetching directory listings:', err);
-    return {
-      businesses: [],
-      meta: { page: 1, limit: 12, total: 0, totalPages: 0 },
-    };
+    // Propagate so the page can show an error state instead of a misleading empty result.
+    throw err;
   }
 }
 

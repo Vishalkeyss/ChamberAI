@@ -38,11 +38,11 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
   const [meta, setMeta] = useState<DirectoryMeta>({ page: 1, limit: 12, total: 0, totalPages: 0 });
   const [filters, setFilters] = useState<DirectoryFilters>({ industries: [], cities: [], chapters: [] });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIndustry, setSelectedIndustry] = useState('');
-  const [selectedPlan, setSelectedPlan] = useState('');
   const [selectedCity, setSelectedCity] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -65,9 +65,14 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
   }, [chamberSlug]);
 
   // Fetch directory listings
+  // Latest request wins: a slower earlier response must not overwrite newer results.
+  const requestSeqRef = useRef(0);
+
   const fetchListings = useCallback(
     async (page: number = 1) => {
+      const seq = ++requestSeqRef.current;
       setLoading(true);
+      setLoadError(false);
       try {
         const result = await fetchDirectoryListings(
           {
@@ -81,25 +86,20 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
           isMemberMode
         );
 
-        let filteredBusinesses = result.businesses;
-
-        // Dynamic plan filtering if user picked a plan
-        if (selectedPlan && selectedPlan.trim()) {
-          filteredBusinesses = filteredBusinesses.filter(
-            (b) => b.planName && b.planName.toLowerCase() === selectedPlan.toLowerCase()
-          );
-        }
-
-        setBusinesses(filteredBusinesses);
-        setMeta({
-          ...result.meta,
-          total: selectedPlan ? filteredBusinesses.length : result.meta.total,
-        });
+        if (seq !== requestSeqRef.current) return;
+        setBusinesses(result.businesses);
+        setMeta(result.meta);
+      } catch (err) {
+        if (seq !== requestSeqRef.current) return;
+        console.error('Error fetching directory listings:', err);
+        setBusinesses([]);
+        setMeta({ page: 1, limit: 12, total: 0, totalPages: 0 });
+        setLoadError(true);
       } finally {
-        setLoading(false);
+        if (seq === requestSeqRef.current) setLoading(false);
       }
     },
-    [searchQuery, selectedIndustry, selectedCity, selectedPlan, chamberSlug, isMemberMode]
+    [searchQuery, selectedIndustry, selectedCity, chamberSlug, isMemberMode]
   );
 
   // Debounced search trigger (300ms)
@@ -112,7 +112,7 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [searchQuery, selectedIndustry, selectedCity, selectedPlan]);
+  }, [fetchListings]);
 
   // Pagination handler
   const handlePageChange = (page: number) => {
@@ -126,7 +126,6 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
     setSearchQuery('');
     setSelectedIndustry('');
     setSelectedCity('');
-    setSelectedPlan('');
     setCurrentPage(1);
   };
 
@@ -175,8 +174,6 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
         onSearchChange={setSearchQuery}
         selectedIndustry={selectedIndustry}
         onIndustryChange={setSelectedIndustry}
-        selectedPlan={selectedPlan}
-        onPlanChange={setSelectedPlan}
         selectedCity={selectedCity}
         onCityChange={setSelectedCity}
         filters={filters}
@@ -219,6 +216,22 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
               </div>
             </div>
           ))}
+        </div>
+      ) : loadError ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center rounded-2xl border border-dashed border-gray-200 dark:border-border bg-white dark:bg-card p-8">
+          <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">
+            Couldn't load the directory
+          </h3>
+          <p className="text-xs text-gray-500 max-w-sm mb-4">
+            Something went wrong while fetching businesses. Please try again.
+          </p>
+          <button
+            type="button"
+            onClick={() => fetchListings(currentPage)}
+            className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#0B1E3B] text-white hover:bg-[#102A43] transition cursor-pointer shadow-xs"
+          >
+            Retry
+          </button>
         </div>
       ) : businesses.length === 0 ? (
         /* Empty State */

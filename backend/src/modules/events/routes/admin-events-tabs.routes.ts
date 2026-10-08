@@ -4,6 +4,7 @@ import type { AppVariables } from '../../../core/context';
 import { requireAuth, requireRole } from '../../../core/middleware/auth.middleware';
 import { successResponse } from '../../../core/shared/response';
 import { AppError, ErrorCodes } from '../../../core/shared/errors';
+import { getAdminScope } from './admin-scope';
 import { EventRegistrationsRepository } from '../repositories/event-registrations.repository';
 import {
   toggleCheckInSchema,
@@ -17,23 +18,6 @@ const adminRoles = ['full_admin', 'chapter_admin', 'group_admin', 'super_admin']
 adminEventsTabsRouter.use('/admin/events/*', requireAuth, requireRole(adminRoles));
 adminEventsTabsRouter.use('/admin/events', requireAuth, requireRole(adminRoles));
 
-function getAdminScope(c: any): { userRole: string; userScopeId: string | null } {
-  const user = c.get('user');
-  const session = c.get('session');
-  const roles = session?.roles || [];
-  const highestRole = user?.highest_role || 'full_admin';
-
-  let userScopeId: string | null = null;
-  if (highestRole === 'chapter_admin') {
-    const chapRole = roles.find((r: any) => r.roleId === 'chapter_admin' && r.scopeType === 'chapter');
-    userScopeId = chapRole?.scopeId || null;
-  } else if (highestRole === 'group_admin') {
-    const grpRole = roles.find((r: any) => r.roleId === 'group_admin' && r.scopeType === 'group');
-    userScopeId = grpRole?.scopeId || null;
-  }
-
-  return { userRole: highestRole, userScopeId };
-}
 
 /**
  * Prompt 04.2 Section 9.1: GET /api/v1/admin/events/:id/overview

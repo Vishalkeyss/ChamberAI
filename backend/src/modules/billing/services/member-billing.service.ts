@@ -1,5 +1,6 @@
 import type { AppContext } from '../../../core/context';
-import { generatePrefixedId } from '../../../core/shared/crypto';
+import { newId } from '../../../core/shared/ids';
+import { PaymentGatewayService } from './payment-gateway.service';
 import { AppError, ErrorCodes } from '../../../core/shared/errors';
 import { escapeHtml } from '../../../core/shared/html';
 import type {
@@ -94,7 +95,7 @@ export class MemberBillingService {
       }>();
 
     if (memberRow || appRow) {
-      const invId = generatePrefixedId('inv');
+      const invId = await newId(db, 'invoices', 'INV', { chamberId });
       const currentYear = new Date().getFullYear();
       const randDigits = Math.floor(1000 + Math.random() * 9000);
       const invoiceNumber = `INV-${currentYear}-${randDigits}`;
@@ -301,14 +302,17 @@ export class MemberBillingService {
       }
     }
 
-    // No payment gateway is integrated yet (OPEN DECISION). An invoice may only be
-    // marked paid from a verified gateway result, so online payment is refused
-    // rather than settling the invoice without collecting money.
-    throw new AppError(
-      ErrorCodes.PAYMENT_UNAVAILABLE,
-      'Online payment is not available yet. Please contact your chamber to settle this invoice.',
-      503
-    );
+    // An invoice may only be marked paid from a verified gateway result. Until a gateway
+    // is integrated (OD-001) PaymentGatewayService refuses the charge with 503.
+    await PaymentGatewayService.charge({
+      chamberId,
+      userId,
+      amount: Number(invoice.total_amount || 0),
+      currency: invoice.currency,
+      description: invoice.description || invoice.invoice_number,
+      paymentMethodId: payload.payment_method_id || null,
+    });
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, 'Payment settlement is not implemented', 500);
   }
 
   /**
@@ -348,7 +352,7 @@ export class MemberBillingService {
           const details = JSON.parse(appRow.business_details_json);
           const pm = details?.paymentMethod;
           if (pm && (pm.lastFour || pm.last_four)) {
-            const pmId = generatePrefixedId('pm');
+            const pmId = await newId(db, 'payment_methods', 'PM', { chamberId });
             const lastFour = String(pm.lastFour || pm.last_four);
             const brand = pm.brand || 'Visa';
             const expMonth = pm.expiryMonth ?? pm.expiry_month ?? null;
@@ -410,7 +414,7 @@ export class MemberBillingService {
     input: AddPaymentMethodInput
   ): Promise<SavedPaymentMethod> {
     const db = c.env.DB;
-    const pmId = generatePrefixedId('pm');
+    const pmId = await newId(db, 'payment_methods', 'PM', { chamberId });
     const now = new Date().toISOString();
 
     // Check existing count; if first card, force default = 1
@@ -700,7 +704,7 @@ export class MemberBillingService {
 
     for (const b of dynamicBenefits) {
       if (!existingKeyMap.has(b.key)) {
-        const buId = generatePrefixedId('bu');
+        const buId = await newId(db, 'membership_benefit_usage', 'MBU', { chamberId });
         await db
           .prepare(
             `INSERT OR IGNORE INTO membership_benefit_usage (
@@ -1028,7 +1032,7 @@ export class MemberBillingService {
       );
     }
 
-    const auditId = generatePrefixedId('act');
+    const auditId = await newId(db, 'activity_logs', 'ACT', { chamberId, suffixLength: 6, skipUniqueCheck: true });
     statements.push(
       db
         .prepare(

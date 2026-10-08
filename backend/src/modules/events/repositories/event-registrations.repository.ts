@@ -41,8 +41,15 @@ export class EventRegistrationsRepository {
       throw new AppError(ErrorCodes.NOT_FOUND, 'Event not found in this chamber', 404);
     }
 
-    // RBAC & Scoping Invariant: Chapter / Group admin isolation
-    if (userRole === 'chapter_admin' && userScopeId) {
+    // RBAC & Scoping Invariant: Chapter / Group admin isolation.
+    // Deny by default: only full admins are unscoped (BUG-054).
+    if (userRole === 'full_admin' || userRole === 'super_admin') {
+      return event;
+    }
+    if (!userScopeId || (userRole !== 'chapter_admin' && userRole !== 'group_admin')) {
+      throw new AppError(ErrorCodes.FORBIDDEN, 'You are not authorized to manage this event', 403);
+    }
+    if (userRole === 'chapter_admin') {
       if (event.chapterId !== userScopeId) {
         throw new AppError(
           ErrorCodes.FORBIDDEN,
@@ -50,7 +57,7 @@ export class EventRegistrationsRepository {
           403
         );
       }
-    } else if (userRole === 'group_admin' && userScopeId) {
+    } else {
       if (event.groupId !== userScopeId) {
         throw new AppError(
           ErrorCodes.FORBIDDEN,
@@ -564,154 +571,5 @@ export class EventRegistrationsRepository {
     }));
   }
 
-  /**
-   * Register member or guest for an event dynamically with capacity & waitlist handling
-   */
-  static async registerEvent(
-    d1: D1Database,
-    chamberId: string,
-    eventId: string,
-    userId: string | null,
-    input: {
-      ticketTypeId?: string;
-      promoCode?: string;
-      redeemPoints?: number;
-      paymentMethodId?: string;
-      guestDetails?: {
-        name: string;
-        email: string;
-        phone?: string;
-        company?: string;
-      };
-    }
-  ) {
-    const db = drizzle(d1);
-
-    // 1. Fetch event
-    const event = await db
-      .select()
-      .from(events)
-      .where(and(eq(events.chamberId, chamberId), eq(events.id, eventId)))
-      .get();
-
-    if (!event) {
-      throw new AppError(ErrorCodes.NOT_FOUND, 'Event not found', 404);
-    }
-
-    // Check visibility
-    if (!userId && event.visibility === 'members_only') {
-      throw new AppError(ErrorCodes.FORBIDDEN, 'This event is restricted to chamber members', 403);
-    }
-
-    // 2. Prevent duplicate active registration for member
-    if (userId) {
-      const existing = await db
-        .select()
-        .from(eventRegistrations)
-        .where(
-          and(
-            eq(eventRegistrations.chamberId, chamberId),
-            eq(eventRegistrations.eventId, eventId),
-            eq(eventRegistrations.userId, userId)
-          )
-        )
-        .get();
-
-      if (existing) {
-        throw new AppError(ErrorCodes.CONFLICT, 'You are already registered for this event', 409);
-      }
-    }
-
-    // Guest details
-    let guestName = input.guestDetails?.name || 'Guest Attendee';
-    let guestEmail = input.guestDetails?.email || '';
-
-    if (userId) {
-      const user = await db.select().from(users).where(eq(users.id, userId)).get();
-      if (user) {
-        guestName = user.name || guestName;
-        guestEmail = user.email || guestEmail;
-      }
-    }
-
-    // 3. Determine capacity & waitlist
-    const isFull =
-      event.maxCapacity != null &&
-      event.maxCapacity > 0 &&
-      (event.registeredCount || 0) >= event.maxCapacity;
-
-    const registrationId = `reg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const now = new Date().toISOString();
-
-    let isWaitlisted = isFull ? 1 : 0;
-    let waitlistPosition: number | null = null;
-
-    if (isWaitlisted) {
-      const waitlistCount = await db
-        .select({ count: sql<number>`COUNT(*)` })
-        .from(eventRegistrations)
-        .where(
-          and(
-            eq(eventRegistrations.chamberId, chamberId),
-            eq(eventRegistrations.eventId, eventId),
-            eq(eventRegistrations.isWaitlisted, 1)
-          )
-        )
-        .get();
-      waitlistPosition = (waitlistCount?.count || 0) + 1;
-    }
-
-    // 4. Insert registration
-    await db.insert(eventRegistrations).values({
-      id: registrationId,
-      chamberId,
-      eventId,
-      userId: userId || null,
-      ticketTypeId: input.ticketTypeId || null,
-      guestName,
-      guestEmail,
-      registrationType: userId ? 'member' : 'guest',
-      promoCodeId: null,
-      amountPaid: isWaitlisted ? 0 : event.registrationFee || 0,
-      discountAmount: 0,
-      paymentStatus: isWaitlisted ? 'unpaid' : event.isPaid ? 'paid' : 'paid',
-      paymentMethodId: input.paymentMethodId || null,
-      checkInStatus: 'not_checked_in',
-      checkedInAt: null,
-      isWaitlisted,
-      waitlistPosition,
-      createdAt: now,
-    });
-
-    // 5. If confirmed, increment event registered_count
-    if (!isWaitlisted) {
-      await db
-        .update(events)
-        .set({
-          registeredCount: sql`${events.registeredCount} + 1`,
-        })
-        .where(eq(events.id, eventId))
-        .run();
-
-      if (input.ticketTypeId) {
-        await db
-          .update(eventTicketTypes)
-          .set({
-            qtySold: sql`${eventTicketTypes.qtySold} + 1`,
-          })
-          .where(eq(eventTicketTypes.id, input.ticketTypeId))
-          .run();
-      }
-    }
-
-    return {
-      registrationId,
-      status: isWaitlisted ? 'waitlisted' : 'confirmed',
-      isWaitlisted: isWaitlisted === 1,
-      waitlistPosition,
-      guestName,
-      guestEmail,
-    };
-  }
 }
 

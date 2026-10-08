@@ -530,4 +530,57 @@ describe('Prompt 03.2: Member & Business Directory Search, Multi-Facet Filtering
     assert.equal(body.data.length, 1);
     assert.equal(body.data[0].name, 'Lone Star Steaks');
   });
+
+  it('8. LIKE wildcards in search are matched literally', async () => {
+    const d1 = createSqliteD1();
+    seedDirectoryData(d1);
+    const env = { DB: d1 as any, KV: createMockKV() as any, ENVIRONMENT: 'test', PLATFORM_DOMAIN: '121meet.ai' };
+
+    // "%" alone must not match every business
+    const res = await app.request('/api/v1/public/directory?q=%25', { headers: { Host: 'austin.121meet.ai' } }, env);
+    assert.equal(res.status, 200);
+    assert.equal(((await res.json()) as any).data.length, 0);
+
+    d1.exec(`UPDATE business_profiles SET tagline = '100% Recycled' WHERE id = 'biz_vance'`);
+    const res2 = await app.request('/api/v1/public/directory?q=100%25', { headers: { Host: 'austin.121meet.ai' } }, env);
+    const body2 = (await res2.json()) as any;
+    assert.equal(body2.data.length, 1);
+    assert.equal(body2.data[0].id, 'biz_vance');
+  });
+
+  it('9. Removed primary contact is not exposed in member directory', async () => {
+    const mockKv = createMockKV();
+    const d1 = createSqliteD1();
+    seedDirectoryData(d1);
+    d1.exec(`UPDATE business_members SET status = 'removed' WHERE id = 'bm_dwight'`);
+
+    const sessionToken = 'sess_member_token';
+    await mockKv.put(`session:${sessionToken}`, JSON.stringify({
+      userId: 'usr_stanley',
+      chamberId,
+      email: 'stanley@vance.com',
+      firstName: 'Stanley',
+      lastName: 'Hudson',
+      avatarUrl: null,
+      highestRole: 'member',
+      roles: [{ roleId: 'member', scopeType: 'chamber', scopeId: chamberId }],
+      pointsBalance: 0,
+      chamber: { id: chamberId, name: 'Austin Chamber' },
+      createdAt: new Date().toISOString(),
+      lastActiveAt: new Date().toISOString(),
+    }));
+
+    const res = await app.request(
+      '/api/v1/directory',
+      { headers: { Host: 'austin.121meet.ai', Authorization: `Bearer ${sessionToken}` } },
+      { DB: d1 as any, KV: mockKv as any, ENVIRONMENT: 'test', PLATFORM_DOMAIN: '121meet.ai' }
+    );
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as any;
+    const dunder = body.data.find((b: any) => b.id === 'biz_dunder');
+    assert.ok(dunder);
+    assert.equal(dunder.primaryContact, null);
+    const vance = body.data.find((b: any) => b.id === 'biz_vance');
+    assert.equal(vance.primaryContact.phone, undefined);
+  });
 });

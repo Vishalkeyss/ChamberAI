@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../../../core/env';
 import type { AppVariables } from '../../../../core/context';
 import { requireAuth, requireRole } from '../../../../core/middleware/auth.middleware';
-import { generatePrefixedId } from '../../../../core/shared/crypto';
+import { newId, chamberKeyedId } from '../../../../core/shared/ids';
 import { AppError, ErrorCodes } from '../../../../core/shared/errors';
 import { successResponse } from '../../../../core/shared/response';
 
@@ -132,7 +132,7 @@ adminOnboardingRoutes.post('/admin/onboarding/finish', async (c) => {
 
 
   // 3. Upsert chamber settings
-  const settingsId = generatePrefixedId('cset');
+  const settingsId = await chamberKeyedId(c.env.DB, 'CSET', chamberId);
   statements.push(
     c.env.DB
       .prepare(
@@ -173,7 +173,7 @@ adminOnboardingRoutes.post('/admin/onboarding/finish', async (c) => {
 
   // 4. Upsert payment gateway credentials if provided
   if (gateway && gateway.provider && gateway.provider !== 'none') {
-    const gwId = generatePrefixedId('gw');
+    const gwId = await chamberKeyedId(c.env.DB, 'GW', chamberId);
     statements.push(
       c.env.DB
         .prepare(
@@ -237,7 +237,7 @@ adminOnboardingRoutes.post('/admin/onboarding/finish', async (c) => {
             )
         );
       } else {
-        const planId = generatePrefixedId('plan');
+        const planId = await newId(c.env.DB, 'membership_plans', 'PLAN', { chamberId });
         statements.push(
           c.env.DB
             .prepare(

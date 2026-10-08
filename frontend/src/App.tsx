@@ -672,26 +672,30 @@ function AppContent() {
 
   const [businessLogo, setBusinessLogo] = useState<string | null | undefined>(undefined);
 
-  // Sync business logo for member profile avatar
+  const currentUserId = user?.id;
+
+  // Sync business logo for member profile avatar. Re-runs per user so one account's
+  // logo never carries over to another account (e.g. member → admin in the same tab).
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchBusinessProfile()
-        .then((profile) => {
-          if (profile?.logoUrl) {
-            setBusinessLogo(profile.logoUrl);
-          } else {
-            setBusinessLogo(null);
-          }
-        })
-        .catch(() => {
-          setBusinessLogo(null);
-        });
-    } else {
-      setBusinessLogo(undefined);
-    }
-  }, [isAuthenticated]);
+    setBusinessLogo(undefined);
+    if (!isAuthenticated || !currentUserId) return;
+
+    let cancelled = false;
+    fetchBusinessProfile()
+      .then((profile) => {
+        if (!cancelled) setBusinessLogo(profile?.logoUrl || null);
+      })
+      .catch(() => {
+        // No business linked to this account (e.g. admins) → fall back to the user's own avatar.
+        if (!cancelled) setBusinessLogo(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, currentUserId]);
 
   useEffect(() => {
+    if (!currentUserId) return;
     const handleLogoUpdate = (e: any) => {
       const url = e.detail?.logoUrl;
       setBusinessLogo(url ? url : null);
@@ -700,7 +704,7 @@ function AppContent() {
     return () => {
       window.removeEventListener('business-logo:updated', handleLogoUpdate);
     };
-  }, []);
+  }, [currentUserId]);
 
   const activeUserProp = user
     ? {

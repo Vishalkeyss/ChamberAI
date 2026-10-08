@@ -1,4 +1,5 @@
 import { generatePrefixedId } from '../../../core/shared/crypto';
+import { newId, formatChamberId, formatReadableId } from '../../../core/shared/ids';
 import { AppError, ErrorCodes } from '../../../core/shared/errors';
 import { SuperChambersRepository } from '../repositories/super-chambers.repository';
 import type {
@@ -61,11 +62,11 @@ export class SuperChambersService {
       );
     }
 
-    const chamberId = generatePrefixedId('cham');
-    const adminUserId = generatePrefixedId('usr');
-    const adminProfileId = generatePrefixedId('ap');
-    const roleAssignmentId = generatePrefixedId('ura');
-    const auditLogId = generatePrefixedId('log');
+    const chamberId = formatChamberId(normalizedSubdomain);
+    const adminUserId = formatReadableId('USR', normalizedSubdomain);
+    const adminProfileId = formatReadableId('ADMP', normalizedSubdomain);
+    const roleAssignmentId = formatReadableId('URA', normalizedSubdomain);
+    const auditLogId = formatReadableId('PAUD', 'PLATFORM', 6);
     const now = new Date().toISOString();
 
     // 2. Insert chamber record via Drizzle ORM
@@ -196,7 +197,7 @@ export class SuperChambersService {
 
     // Log to platform audit logs
     try {
-      const auditLogId = generatePrefixedId('log_');
+      const auditLogId = await newId(d1, 'platform_audit_logs', 'PAUD', { chamberId, suffixLength: 6, skipUniqueCheck: true });
       await d1
         .prepare(
           `INSERT INTO platform_audit_logs (

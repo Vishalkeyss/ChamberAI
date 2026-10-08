@@ -22,6 +22,19 @@ export interface EventListItem {
   status: string | null;
   isSoldOut: boolean;
   spotsRemaining: number | null;
+  allowNonMemberRegistration: number;
+  ticketTypes: EventTicketTypeItem[];
+}
+
+/** Prompt 04.3 (OD-025): ticket tiers exposed with each event for the registration modal. */
+export interface EventTicketTypeItem {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  allowPayLater: number;
+  qtyLimit: number | null;
+  qtyRemaining: number | null;
 }
 
 export interface EventsListResponse {
@@ -31,6 +44,8 @@ export interface EventsListResponse {
     page: number;
     limit: number;
     totalPages: number;
+    /** Prompt 04.3 §8 points value, so clients never duplicate the constant */
+    pointRedemptionValue: number;
   };
 }
 

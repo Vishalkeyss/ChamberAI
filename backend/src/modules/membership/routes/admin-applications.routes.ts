@@ -6,7 +6,7 @@ import { ApplicationsRepository } from '../repositories/applications.repository'
 import { successResponse } from '../../../core/shared/response';
 import { AppError, ErrorCodes } from '../../../core/shared/errors';
 
-import { generatePrefixedId } from '../../../core/shared/crypto';
+import { chamberKeyedId } from '../../../core/shared/ids';
 
 export const adminApplicationsRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -123,7 +123,7 @@ adminApplicationsRoutes.patch(
         .bind(val, now, chamberId)
         .run();
     } else {
-      const id = generatePrefixedId('cfg');
+      const id = await chamberKeyedId(c.env.DB, 'CSET', chamberId);
       await c.env.DB
         .prepare(
           `INSERT INTO chamber_settings (

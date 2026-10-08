@@ -341,14 +341,27 @@ function createMockDb() {
             return { success: true, meta: { changes: 0 } };
           }
           if (normalized.includes('UPDATE applications') && normalized.includes('converted_user_id IS NULL')) {
-            const [adminNotes, userId, updatedAt, chamberId, id] = boundParams;
+            // Approval claim: marks the row as provisioning (no user FK yet)
+            const [updatedAt, chamberId, id] = boundParams;
             const app = applications.get(id);
             if (
               app &&
               app.chamber_id === chamberId &&
               !app.converted_user_id &&
+              app.kanban_stage !== 'provisioning' &&
               ['pending', 'changes_requested', 'approved'].includes(app.status)
             ) {
+              app.kanban_stage = 'provisioning';
+              app.updated_at = updatedAt;
+              return { success: true, meta: { changes: 1 } };
+            }
+            return { success: true, meta: { changes: 0 } };
+          }
+          if (normalized.includes('UPDATE applications') && normalized.includes('converted_user_id = ?') && normalized.includes("kanban_stage = 'approved'")) {
+            // Approval finalize (runs in the batch after the user insert)
+            const [adminNotes, userId, updatedAt, chamberId, id] = boundParams;
+            const app = applications.get(id);
+            if (app && app.chamber_id === chamberId) {
               app.status = 'approved';
               app.admin_notes = adminNotes;
               app.kanban_stage = 'approved';

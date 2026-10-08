@@ -1,6 +1,7 @@
 import type { AppContext } from '../../../core/context';
 import { AppError, ErrorCodes } from '../../../core/shared/errors';
-import { generatePrefixedId, encryptData } from '../../../core/shared/crypto';
+import { encryptData } from '../../../core/shared/crypto';
+import { newId } from '../../../core/shared/ids';
 import { NotificationPreferencesRepository, type CanonicalPreferenceItem } from '../repositories/notification-preferences.repository';
 import type { UpdateProfileInput, SavePersonalApiKeyInput } from '../validation/account-settings.validation';
 import type { CachedSession } from '../../auth/services/session.service';
@@ -148,7 +149,7 @@ export class AccountSettingsService {
           .bind(input.title, existingAdmin.id)
           .run();
       } else if (input.title) {
-        const adminId = generatePrefixedId('adm_prof');
+        const adminId = await newId(c.env.DB, 'admin_profiles', 'ADMP', { chamberId });
         await c.env.DB.prepare(
           `INSERT INTO admin_profiles (
              id, chamber_id, user_id, job_title, created_at, updated_at
@@ -287,7 +288,7 @@ export class AccountSettingsService {
     details: any
   ) {
     try {
-      const auditId = generatePrefixedId('aud');
+      const auditId = await newId(c.env.DB, 'platform_audit_logs', 'PAUD', { chamberId, suffixLength: 6, skipUniqueCheck: true });
       const ip =
         c.req.header('cf-connecting-ip') ||
         c.req.header('x-forwarded-for') ||

@@ -22,6 +22,7 @@ import { AttendeesTab } from '../components/tabs/AttendeesTab';
 import { WaitlistTab } from '../components/tabs/WaitlistTab';
 import { FeedbackTab } from '../components/tabs/FeedbackTab';
 import { SponsorsTab } from '../components/tabs/SponsorsTab';
+import { AdminEventWizardModal } from '../components/AdminEventWizardModal';
 
 interface AdminEventDetailPageProps {
   eventId: string;
@@ -60,6 +61,7 @@ export const AdminEventDetailPage: React.FC<AdminEventDetailPageProps> = ({
   isGroupScopedAdmin = false,
 }) => {
   // 1. URL search param synchronization for active tab (e.g. ?tab=attendees)
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<AdminEventTabKey>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -208,7 +210,7 @@ export const AdminEventDetailPage: React.FC<AdminEventDetailPageProps> = ({
         <OverviewTab
           data={overviewData}
           onCheckIn={() => handleTabChange('Attendees')}
-          onEdit={() => toast.info('Edit Event opened')}
+          onEdit={isGroupScopedAdmin ? undefined : () => setIsWizardOpen(true)}
           onManageAttendees={() => handleTabChange('Attendees')}
         />
       )}
@@ -270,6 +272,17 @@ export const AdminEventDetailPage: React.FC<AdminEventDetailPageProps> = ({
           <p className="font-semibold text-sm text-[#111827] mb-1">Sponsor Setup & Deliverables</p>
           <p>Configure event sponsor packages, banner placements, and automated invoice dispatches.</p>
         </div>
+      )}
+      {isWizardOpen && (
+        <AdminEventWizardModal
+          eventId={eventId}
+          chamberSlug={chamberSlug}
+          onClose={() => setIsWizardOpen(false)}
+          onSaved={() => {
+            setIsWizardOpen(false);
+            loadData();
+          }}
+        />
       )}
     </div>
   );

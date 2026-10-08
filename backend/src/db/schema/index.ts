@@ -10,3 +10,8 @@ export * from './event-ticket-types.schema';
 export * from './event-registrations.schema';
 export * from './event-feedback.schema';
 export * from './event-sponsors.schema';
+export * from './event-promo-codes.schema';
+export * from './points-history.schema';
+export * from './invoices.schema';
+export * from './groups.schema';
+export * from './activity-logs.schema';

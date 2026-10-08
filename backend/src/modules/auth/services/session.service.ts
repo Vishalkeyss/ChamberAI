@@ -1,5 +1,6 @@
 import type { AppContext } from '../../../core/context';
-import { generateSessionToken, generatePrefixedId } from '../../../core/shared/crypto';
+import { generateSessionToken } from '../../../core/shared/crypto';
+import { newId } from '../../../core/shared/ids';
 import { isLocalDevRequest } from '../../../core/shared/dev-guard';
 
 export type PlatformRole =
@@ -246,7 +247,7 @@ export class SessionService {
     // Write audit log entry (non-fatal)
     if (resolvedSession && c.env.DB) {
       try {
-        const auditId = generatePrefixedId('aud');
+        const auditId = await newId(c.env.DB, 'platform_audit_logs', 'PAUD', { chamberId: resolvedSession.chamberId, suffixLength: 6, skipUniqueCheck: true });
         const ip =
           c.req.header('cf-connecting-ip') ||
           c.req.header('x-forwarded-for') ||
