@@ -834,8 +834,11 @@ jobs:
 
             console.log("Starting Gemini autonomous loop...");
 
+            const modelName = process.env.GEMINI_MODEL || "gemini-3.1-pro-preview";
+            console.log(`Using model: ${modelName}`);
+
             const chat = ai.chats.create({
-              model: "gemini-2.5-pro",
+              model: modelName,
               config: {
                 systemInstruction: systemPrompt,
                 tools: [{
