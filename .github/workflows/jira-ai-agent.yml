@@ -924,22 +924,33 @@ jobs:
 
               let sendAttempts = 0;
               let nextResponse = null;
-              while (sendAttempts++ < 3) {
+              const maxAttempts = 5;
+              while (sendAttempts++ < maxAttempts) {
                 try {
                   nextResponse = await chat.sendMessage({
                     message: parts
                   });
                   break;
                 } catch (sendErr) {
-                  console.log(`[Turn ${turns}] sendMessage warning (attempt ${sendAttempts}): ${sendErr.message}`);
-                  if (sendAttempts < 3) {
-                    await new Promise(r => setTimeout(r, 5000));
+                  console.log(`[Turn ${turns}] sendMessage warning (attempt ${sendAttempts}/${maxAttempts}): ${sendErr.message}`);
+                  if (sendAttempts < maxAttempts) {
+                    let waitMs = 25000; // default 25s for free tier RPM window
+                    const retryInfoMatch = sendErr.message?.match(/retry in ([0-9.]+)s/i) || sendErr.message?.match(/"retryDelay":\s*"([0-9]+)s"/i);
+                    if (retryInfoMatch && retryInfoMatch[1]) {
+                      const seconds = Math.ceil(parseFloat(retryInfoMatch[1])) + 2;
+                      waitMs = seconds * 1000;
+                    }
+                    console.log(`Rate limit backoff: waiting ${Math.round(waitMs / 1000)}s before next attempt...`);
+                    await new Promise(r => setTimeout(r, waitMs));
                   } else {
                     throw sendErr;
                   }
                 }
               }
               response = nextResponse;
+
+              // Gentle 4s pacing between turns to stay safely below 5-15 RPM free tier limits
+              await new Promise(r => setTimeout(r, 4000));
             }
 
             console.log("Agent finished. Writing output report...");
