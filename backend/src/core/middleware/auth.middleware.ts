@@ -7,17 +7,14 @@ import { SessionService } from '../../modules/auth/services/session.service';
  * Enforces valid Cloudflare KV session Bearer token and tenant isolation.
  */
 export async function requireAuth(c: AppContext, next: () => Promise<void>) {
+  let token = '';
   const authHeader = c.req.header('Authorization');
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    throw new AppError(
-      ErrorCodes.UNAUTHORIZED,
-      'Invalid or expired session token',
-      401
-    );
+  // Bearer header only: tokens in URLs leak via logs, history and Referer headers.
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7).trim();
   }
 
-  const token = authHeader.substring(7).trim();
   if (!token) {
     throw new AppError(
       ErrorCodes.UNAUTHORIZED,

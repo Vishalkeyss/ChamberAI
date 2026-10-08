@@ -53,7 +53,7 @@ INSERT OR IGNORE INTO platform_super_admins (
 INSERT OR IGNORE INTO users (
   id, chamber_id, member_verification_token, email, phone, name,
   avatar_url, highest_role, status,
-  points_balance, profile_completion_pct, onboarding_complete,
+  points_balance, profile_completion_pct,
   two_factor_enabled, preferred_language, preferred_theme,
   ai_credits_used, ai_credits_limit,
   created_at, updated_at
@@ -67,7 +67,7 @@ INSERT OR IGNORE INTO users (
   NULL,
   'full_admin',
   'active',
-  0, 80, 1, 0,
+  0, 80, 0,
   'en', 'system',
   0, 50,
   datetime('now'),
@@ -99,7 +99,7 @@ INSERT OR IGNORE INTO user_role_assignments (
 INSERT OR IGNORE INTO users (
   id, chamber_id, member_verification_token, email, phone, name,
   avatar_url, highest_role, status,
-  points_balance, profile_completion_pct, onboarding_complete,
+  points_balance, profile_completion_pct,
   two_factor_enabled, preferred_language, preferred_theme,
   ai_credits_used, ai_credits_limit,
   created_at, updated_at
@@ -113,7 +113,7 @@ INSERT OR IGNORE INTO users (
   NULL,
   'member',
   'active',
-  500, 60, 0, 0,
+  500, 60, 0,
   'en', 'system',
   0, 5,
   datetime('now'),
@@ -145,7 +145,7 @@ INSERT OR IGNORE INTO user_role_assignments (
 INSERT OR IGNORE INTO users (
   id, chamber_id, member_verification_token, email, phone, name,
   avatar_url, highest_role, status,
-  points_balance, profile_completion_pct, onboarding_complete,
+  points_balance, profile_completion_pct,
   two_factor_enabled, preferred_language, preferred_theme,
   ai_credits_used, ai_credits_limit,
   created_at, updated_at
@@ -159,7 +159,7 @@ INSERT OR IGNORE INTO users (
   NULL,
   'chapter_admin',
   'active',
-  100, 75, 1, 0,
+  100, 75, 0,
   'en', 'system',
   0, 25,
   datetime('now'),
@@ -190,7 +190,7 @@ INSERT OR IGNORE INTO user_role_assignments (
 INSERT OR IGNORE INTO users (
   id, chamber_id, member_verification_token, email, phone, name,
   avatar_url, highest_role, status,
-  points_balance, profile_completion_pct, onboarding_complete,
+  points_balance, profile_completion_pct,
   two_factor_enabled, preferred_language, preferred_theme,
   ai_credits_used, ai_credits_limit,
   created_at, updated_at
@@ -204,7 +204,7 @@ INSERT OR IGNORE INTO users (
   NULL,
   'group_admin',
   'active',
-  100, 75, 1, 0,
+  100, 75, 0,
   'en', 'system',
   0, 25,
   datetime('now'),

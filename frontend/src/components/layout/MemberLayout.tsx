@@ -10,6 +10,7 @@ export interface MemberLayoutProps {
   user?: TopbarProps['user'];
   currentPath?: string;
   onLogout?: () => void;
+  onEditProfile?: () => void;
   onAccountSettings?: () => void;
   onBackToAI?: () => void;
   onNavigate?: (path: string) => void;
@@ -26,6 +27,7 @@ export const MemberLayout: React.FC<MemberLayoutProps> = ({
   },
   currentPath = '/portal/overview',
   onLogout,
+  onEditProfile,
   onAccountSettings,
   onBackToAI,
   onNavigate,
@@ -85,6 +87,7 @@ export const MemberLayout: React.FC<MemberLayoutProps> = ({
           user={user}
           onToggleSidebar={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           onLogout={onLogout}
+          onEditProfile={onEditProfile}
           onAccountSettings={onAccountSettings}
           onBackToAI={onBackToAI}
         />

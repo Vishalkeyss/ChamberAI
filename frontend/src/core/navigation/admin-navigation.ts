@@ -29,7 +29,7 @@ export const adminNavigation: AdminNavSection[] = [
       },
       {
         id: 'onboarding',
-        label: 'Admin Onboarding',
+        label: 'Chamber Onboarding',
         href: '/admin/onboarding',
         icon: 'ClipboardList',
         allowedRoles: ['full_admin'],

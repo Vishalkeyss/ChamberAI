@@ -60,4 +60,8 @@ export const MIGRATIONS: MigrationDefinition[] = [
     name: '0013_member_onboarding.sql',
     sql: "ALTER TABLE users ADD COLUMN onboarding_steps_json TEXT NOT NULL DEFAULT '{\"profile\": false, \"card\": false, \"network\": false, \"team\": false}';",
   },
+  {
+    name: '0014_drop_user_onboarding.sql',
+    sql: "ALTER TABLE users DROP COLUMN onboarding_steps_json;\nALTER TABLE users DROP COLUMN onboarding_complete;",
+  },
 ];

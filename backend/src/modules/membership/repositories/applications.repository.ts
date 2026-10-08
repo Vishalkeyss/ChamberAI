@@ -1,5 +1,5 @@
 import type { SubmitApplicationInput, ResubmitApplicationInput } from '../validation/applications.validation';
-import { generatePrefixedId, generateTrackingCode, generateSessionToken } from '../../../core/shared/crypto';
+import { generatePrefixedId, generateTrackingCode, generateSessionToken, generateMemberDisplayId } from '../../../core/shared/crypto';
 
 export interface ApplicationRecord {
   id: string;
@@ -27,6 +27,15 @@ export interface ApplicationDetails extends ApplicationRecord {
   chapter_name?: string;
 }
 
+export interface ApprovalResult {
+  success: boolean;
+  charged: boolean;
+  chargedAmount: number;
+  cardLastFour: string | null;
+  transactionId: string | null;
+  invoiceId: string | null;
+}
+
 export class ApplicationsRepository {
   /**
    * Creates a new membership application in D1
@@ -36,12 +45,17 @@ export class ApplicationsRepository {
     chamberId: string,
     input: SubmitApplicationInput,
     autoApprove = false
-  ): Promise<{ id: string; trackingCode: string; status: 'pending' | 'approved' }> {
+  ): Promise<{ id: string; trackingCode: string; status: 'pending' | 'approved'; chargeResult?: ApprovalResult }> {
     const id = generatePrefixedId('app');
-    const trackingCode = input.customTrackingCode ? input.customTrackingCode.trim().toUpperCase() : generateTrackingCode();
+    const trackingCode = await this.generateUniqueTrackingCode(db);
     const status: 'pending' | 'approved' = autoApprove ? 'approved' : 'pending';
     const kanbanStage = autoApprove ? 'approved' : 'new';
     const now = new Date().toISOString();
+
+    const mergedBusinessDetails = {
+      ...(input.businessDetails || {}),
+      paymentMethod: input.paymentMethod || input.businessDetails?.paymentMethod || null,
+    };
 
     const statements: D1PreparedStatement[] = [
       db
@@ -59,7 +73,7 @@ export class ApplicationsRepository {
           input.businessEmail,
           input.businessPhone || null,
           input.businessName,
-          JSON.stringify(input.businessDetails),
+          JSON.stringify(mergedBusinessDetails),
           input.planId,
           input.chapterId || null,
           status,
@@ -100,10 +114,16 @@ export class ApplicationsRepository {
 
     await db.batch(statements);
 
+    let chargeResult: ApprovalResult | undefined;
+    if (autoApprove) {
+      chargeResult = await this.processApproval(db, chamberId, id);
+    }
+
     return {
       id,
       trackingCode,
       status,
+      chargeResult,
     };
   }
 
@@ -136,26 +156,23 @@ export class ApplicationsRepository {
       .bind(chamberId, normalizedCode)
       .first<any>();
 
-    // Fallback: If not found under current chamber, look up by globally unique tracking code
-    if (!row) {
-      row = await db
-        .prepare(
-          `SELECT a.*,
-                  p.name AS plan_name,
-                  p.accent_color AS plan_accent_color,
-                  p.price AS plan_price,
-                  p.pricing_basis AS plan_pricing_basis,
-                  c.name AS chapter_name
-           FROM applications a
-           LEFT JOIN membership_plans p ON a.plan_id = p.id
-           LEFT JOIN chapters c ON a.chapter_id = c.id
-           WHERE a.tracking_code = ?`
-        )
-        .bind(normalizedCode)
-        .first<any>();
-    }
-
     return row || null;
+  }
+
+  /**
+   * Generates a tracking code (CSPRNG) that does not collide with an existing one.
+   * tracking_code is globally UNIQUE in the canonical schema.
+   */
+  static async generateUniqueTrackingCode(db: D1Database, maxAttempts = 5): Promise<string> {
+    for (let i = 0; i < maxAttempts; i++) {
+      const code = generateTrackingCode();
+      const existing = await db
+        .prepare('SELECT id FROM applications WHERE tracking_code = ? LIMIT 1')
+        .bind(code)
+        .first<{ id: string }>();
+      if (!existing) return code;
+    }
+    throw new Error('Unable to generate a unique application tracking code');
   }
 
   /**
@@ -330,6 +347,374 @@ export class ApplicationsRepository {
   }
 
   /**
+   * Provisions member account, business profile, membership, vaults card and creates/charges invoice
+   */
+  static async processApproval(
+    db: D1Database,
+    chamberId: string,
+    id: string,
+    adminUserId?: string,
+    adminNotes?: string | null
+  ): Promise<ApprovalResult> {
+    const now = new Date().toISOString();
+    const app = await this.findById(db, chamberId, id);
+    if (!app) {
+      return {
+        success: false,
+        charged: false,
+        chargedAmount: 0,
+        cardLastFour: null,
+        transactionId: null,
+        invoiceId: null,
+      };
+    }
+
+    const failed: ApprovalResult = {
+      success: false,
+      charged: false,
+      chargedAmount: 0,
+      cardLastFour: null,
+      transactionId: null,
+      invoiceId: null,
+    };
+
+    // Rejected or already-provisioned applications can never be (re)approved.
+    if (app.status === 'rejected' || (app as { converted_user_id?: string | null }).converted_user_id) {
+      return failed;
+    }
+
+    const statements: D1PreparedStatement[] = [];
+
+    if (adminUserId) {
+      const logId = generatePrefixedId('act');
+      statements.push(
+        db
+          .prepare(
+            `INSERT INTO activity_logs (
+              id, chamber_id, user_id, action, target_type, target_id, details_json, created_at
+            ) VALUES (?, ?, ?, 'application.approved', 'application', ?, ?, ?)`
+          )
+          .bind(
+            logId,
+            chamberId,
+            adminUserId,
+            id,
+            JSON.stringify({ status: 'approved', notes: adminNotes }),
+            now
+          )
+      );
+    }
+
+    // 1. Provision or activate user
+    const email = app.business_email.trim().toLowerCase();
+    // Users are unique per (chamber_id, email): never match a user from another chamber.
+    const existingUser = await db
+      .prepare('SELECT id, status FROM users WHERE email = ? AND chamber_id = ? LIMIT 1')
+      .bind(email, app.chamber_id)
+      .first<{ id: string; status: string }>();
+
+    let userId = existingUser?.id;
+    if (!userId) {
+      userId = generatePrefixedId('usr');
+      const token = generateSessionToken();
+      statements.push(
+        db
+          .prepare(
+            `INSERT INTO users (
+              id, chamber_id, member_verification_token, email, phone, name,
+              highest_role, status, preferred_theme, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, 'member', 'active', 'light', ?, ?)`
+          )
+          .bind(
+            userId,
+            app.chamber_id,
+            token,
+            email,
+            app.business_phone || null,
+            app.applicant_name,
+            now,
+            now
+          )
+      );
+    } else {
+      statements.push(
+        db
+          // Keep any existing (higher) role; only activate the account.
+          .prepare(
+            `UPDATE users SET status = 'active', highest_role = COALESCE(highest_role, 'member'), updated_at = ?
+             WHERE id = ? AND chamber_id = ?`
+          )
+          .bind(now, userId, app.chamber_id)
+      );
+    }
+
+    // 2. Role assignment for member
+    const uraId = generatePrefixedId('ura');
+    statements.push(
+      db
+        .prepare(
+          `INSERT OR IGNORE INTO user_role_assignments (
+            id, chamber_id, user_id, role_id, scope_type, scope_id, granted_by, granted_at, is_active
+          ) VALUES (?, ?, ?, 'member', 'chamber', ?, ?, ?, 1)`
+        )
+        .bind(
+          uraId,
+          app.chamber_id,
+          userId,
+          app.chamber_id,
+          adminUserId || userId,
+          now
+        )
+    );
+
+    // 3. Business profile
+    const bizId = generatePrefixedId('biz');
+    statements.push(
+      db
+        .prepare(
+          `INSERT OR IGNORE INTO business_profiles (
+            id, chamber_id, business_name, business_email, business_phone, is_verified, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`
+        )
+        .bind(
+          bizId,
+          app.chamber_id,
+          app.business_name,
+          email,
+          app.business_phone || null,
+          now,
+          now
+        )
+    );
+
+    // 4. Business member link
+    const bmId = generatePrefixedId('bm');
+    statements.push(
+      db
+        .prepare(
+          `INSERT OR IGNORE INTO business_members (
+            id, chamber_id, business_id, user_id, access_level, is_primary_contact, status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, 'full_access', 1, 'active', ?, ?)`
+        )
+        .bind(
+          bmId,
+          app.chamber_id,
+          bizId,
+          userId,
+          now,
+          now
+        )
+    );
+
+    // 5. Chamber membership
+    const cmId = generatePrefixedId('mbr');
+    const displayMemberId = generateMemberDisplayId();
+    statements.push(
+      db
+        .prepare(
+          `INSERT OR IGNORE INTO chamber_memberships (
+            id, chamber_id, business_id, member_id_display, plan_id, status, approved_by, approved_at, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`
+        )
+        .bind(
+          cmId,
+          app.chamber_id,
+          bizId,
+          displayMemberId,
+          app.plan_id || null,
+          adminUserId || null,
+          now,
+          now,
+          now
+        )
+    );
+
+
+    // 7. Synchronize platform_chambers.members_count
+    statements.push(
+      db
+        .prepare(
+          `UPDATE platform_chambers 
+           SET members_count = MAX(
+             (SELECT COUNT(*) FROM users WHERE chamber_id = ? AND highest_role = 'member' AND status != 'suspended'),
+             (SELECT COUNT(*) FROM chamber_memberships WHERE chamber_id = ? AND status = 'active'),
+             members_count + 1
+           ) 
+           WHERE id = ?`
+        )
+        .bind(app.chamber_id, app.chamber_id, app.chamber_id)
+    );
+
+    // 8. Determine plan pricing and currency
+    let planPrice = 0;
+    let planName = 'Membership Plan';
+    if (app.plan_id) {
+      const plan = await db
+        .prepare('SELECT name, price FROM membership_plans WHERE id = ? AND chamber_id = ? LIMIT 1')
+        .bind(app.plan_id, app.chamber_id)
+        .first<{ name: string; price: number }>();
+      if (plan) {
+        planPrice = Number(plan.price ?? 0);
+        planName = plan.name || planName;
+      } else if (app.plan_price !== undefined) {
+        planPrice = Number(app.plan_price);
+        planName = app.plan_name || planName;
+      }
+    }
+
+    // 9. Extract payment method from application details
+    let details: any = {};
+    try {
+      details = app.business_details_json ? JSON.parse(app.business_details_json) : {};
+    } catch {}
+    const pm = details?.paymentMethod;
+
+    let pmId: string | null = null;
+    let charged = false;
+    let txnId: string | null = null;
+    let invStatus: 'paid' | 'unpaid' = 'unpaid';
+    let paidAt: string | null = null;
+
+    if (pm && pm.lastFour) {
+      pmId = generatePrefixedId('pm');
+      statements.push(
+        db
+          .prepare(
+            `INSERT INTO payment_methods (
+              id, chamber_id, user_id, type, brand, last_four,
+              expiry_month, expiry_year, is_default, gateway_token_encrypted, created_at
+            ) VALUES (?, ?, ?, 'card', ?, ?, ?, ?, 1, ?, ?)`
+          )
+          .bind(
+            pmId,
+            app.chamber_id,
+            userId,
+            pm.brand || 'card',
+            String(pm.lastFour),
+            pm.expiryMonth ?? null,
+            pm.expiryYear ?? null,
+            null, // No gateway integrated (OPEN DECISION): never store a fabricated or client-supplied token
+            now
+          )
+      );
+    }
+
+    const invId = generatePrefixedId('inv');
+    const invoiceNumber = `INV-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
+
+    if (planPrice > 0) {
+      // No payment gateway is integrated yet (OPEN DECISION): never mark dues as
+      // paid without a verified gateway charge. The invoice stays unpaid.
+      invStatus = 'unpaid';
+    } else {
+      // Complimentary / $0 plan
+      invStatus = 'paid';
+      paidAt = now;
+    }
+
+    const dueDateObj = new Date();
+    dueDateObj.setDate(dueDateObj.getDate() + 30);
+    const dueDate = dueDateObj.toISOString().split('T')[0];
+
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO invoices (
+            id, chamber_id, invoice_number, user_id, invoice_type, description,
+            amount, tax_amount, discount_amount, total_amount, currency,
+            status, due_date, paid_at, payment_method_id, payment_gateway_txn_id,
+            related_plan_id, created_by, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, 'membership', ?, ?, 0.0, 0.0, ?, 'USD', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          invId,
+          app.chamber_id,
+          invoiceNumber,
+          userId,
+          `Membership Dues - ${planName}`,
+          planPrice,
+          planPrice,
+          invStatus,
+          dueDate,
+          paidAt,
+          pmId || null,
+          txnId || null,
+          app.plan_id || null,
+          adminUserId || userId,
+          now,
+          now
+        )
+    );
+
+    if (charged) {
+      const chargeLogId = generatePrefixedId('act');
+      statements.push(
+        db
+          .prepare(
+            `INSERT INTO activity_logs (
+              id, chamber_id, user_id, action, target_type, target_id, details_json, created_at
+            ) VALUES (?, ?, ?, 'payment.charged', 'invoice', ?, ?, ?)`
+          )
+          .bind(
+            chargeLogId,
+            chamberId,
+            adminUserId || userId,
+            invId,
+            JSON.stringify({
+              invoice_id: invId,
+              amount: planPrice,
+              card_last_four: pm?.lastFour,
+              txn_id: txnId,
+            }),
+            now
+          )
+      );
+    }
+
+    // Atomically claim the application: only one approval can win, and only from
+    // a non-rejected, not-yet-provisioned state.
+    const claim = await db
+      .prepare(
+        `UPDATE applications
+         SET status = 'approved',
+             admin_notes = ?,
+             kanban_stage = 'approved',
+             converted_user_id = ?,
+             updated_at = ?
+         WHERE chamber_id = ? AND id = ?
+           AND converted_user_id IS NULL
+           AND status IN ('pending', 'changes_requested', 'approved')`
+      )
+      .bind(adminNotes || null, userId, now, chamberId, id)
+      .run();
+    if (!claim.meta?.changes) {
+      return failed;
+    }
+
+    try {
+      await db.batch(statements);
+    } catch (err) {
+      await db
+        .prepare(
+          `UPDATE applications SET status = ?, kanban_stage = ?, admin_notes = ?, converted_user_id = NULL, updated_at = ?
+           WHERE chamber_id = ? AND id = ?`
+        )
+        .bind(app.status, app.kanban_stage, app.admin_notes, now, chamberId, id)
+        .run();
+      throw err;
+    }
+
+    return {
+      success: true,
+      charged,
+      chargedAmount: charged ? planPrice : 0,
+      cardLastFour: pm?.lastFour || null,
+      transactionId: txnId,
+      invoiceId: invId,
+    };
+  }
+
+  /**
    * Admin: Update application status (approve, request changes, reject)
    */
   static async updateStatus(
@@ -339,10 +724,13 @@ export class ApplicationsRepository {
     status: 'approved' | 'rejected' | 'changes_requested',
     adminNotes?: string | null,
     adminUserId?: string
-  ): Promise<boolean> {
+  ): Promise<ApprovalResult> {
+    if (status === 'approved') {
+      return this.processApproval(db, chamberId, id, adminUserId, adminNotes);
+    }
+
     const now = new Date().toISOString();
-    const kanbanStage =
-      status === 'approved' ? 'approved' : status === 'rejected' ? 'rejected' : 'changes_requested';
+    const kanbanStage = status === 'rejected' ? 'rejected' : 'changes_requested';
 
     const statements: D1PreparedStatement[] = [
       db
@@ -379,146 +767,16 @@ export class ApplicationsRepository {
       );
     }
 
-    // When approved, automatically provision the member user account, role, and membership
-    if (status === 'approved') {
-      const app = await this.findById(db, chamberId, id);
-      if (app) {
-        const email = app.business_email.trim().toLowerCase();
-        let existingUser = await db
-          .prepare('SELECT id, status FROM users WHERE email = ? AND chamber_id = ? LIMIT 1')
-          .bind(email, app.chamber_id)
-          .first<{ id: string; status: string }>();
-
-        if (!existingUser) {
-          existingUser = await db
-            .prepare('SELECT id, status FROM users WHERE email = ? LIMIT 1')
-            .bind(email)
-            .first<{ id: string; status: string }>();
-        }
-
-        let userId = existingUser?.id;
-        if (!userId) {
-          userId = generatePrefixedId('usr');
-          const token = generateSessionToken();
-          statements.push(
-            db
-              .prepare(
-                `INSERT INTO users (
-                  id, chamber_id, member_verification_token, email, phone, name,
-                  highest_role, status, onboarding_complete, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 'member', 'active', 1, ?, ?)`
-              )
-              .bind(
-                userId,
-                app.chamber_id,
-                token,
-                email,
-                app.business_phone || null,
-                app.applicant_name,
-                now,
-                now
-              )
-          );
-        } else {
-          statements.push(
-            db
-              .prepare('UPDATE users SET status = "active", highest_role = "member", updated_at = ? WHERE id = ?')
-              .bind(now, userId)
-          );
-        }
-
-        // Role assignment for member
-        const uraId = generatePrefixedId('ura');
-        statements.push(
-          db
-            .prepare(
-              `INSERT OR IGNORE INTO user_role_assignments (
-                id, chamber_id, user_id, role_id, scope_type, scope_id, granted_by, granted_at, is_active
-              ) VALUES (?, ?, ?, 'member', 'chamber', ?, ?, ?, 1)`
-            )
-            .bind(
-              uraId,
-              app.chamber_id,
-              userId,
-              app.chamber_id,
-              adminUserId || userId,
-              now
-            )
-        );
-
-        // Business profile
-        const bizId = generatePrefixedId('biz');
-        statements.push(
-          db
-            .prepare(
-              `INSERT OR IGNORE INTO business_profiles (
-                id, chamber_id, business_name, business_email, business_phone, is_verified, created_at, updated_at
-              ) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`
-            )
-            .bind(
-              bizId,
-              app.chamber_id,
-              app.business_name,
-              email,
-              app.business_phone || null,
-              now,
-              now
-            )
-        );
-
-        // Business member link
-        const bmId = generatePrefixedId('bm');
-        statements.push(
-          db
-            .prepare(
-              `INSERT OR IGNORE INTO business_members (
-                id, chamber_id, business_id, user_id, access_level, is_primary_contact, status, created_at, updated_at
-              ) VALUES (?, ?, ?, ?, 'full_access', 1, 'active', ?, ?)`
-            )
-            .bind(
-              bmId,
-              app.chamber_id,
-              bizId,
-              userId,
-              now,
-              now
-            )
-        );
-
-        // Chamber membership
-        const cmId = generatePrefixedId('mbr');
-        const displayMemberId = `MEM-2026-${Math.floor(10000 + Math.random() * 90000)}`;
-        statements.push(
-          db
-            .prepare(
-              `INSERT OR IGNORE INTO chamber_memberships (
-                id, chamber_id, business_id, member_id_display, plan_id, status, approved_by, approved_at, created_at, updated_at
-              ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`
-            )
-            .bind(
-              cmId,
-              app.chamber_id,
-              bizId,
-              displayMemberId,
-              app.plan_id || null,
-              adminUserId || null,
-              now,
-              now,
-              now
-            )
-        );
-
-        // Update applications converted_user_id
-        statements.push(
-          db
-            .prepare('UPDATE applications SET converted_user_id = ?, updated_at = ? WHERE id = ?')
-            .bind(userId, now, id)
-        );
-      }
-    }
-
     const results = await db.batch(statements);
-    return (results[0].meta.changes ?? 0) > 0;
+    const success = (results[0].meta.changes ?? 0) > 0;
+    return {
+      success,
+      charged: false,
+      chargedAmount: 0,
+      cardLastFour: null,
+      transactionId: null,
+      invoiceId: null,
+    };
   }
 
   /**

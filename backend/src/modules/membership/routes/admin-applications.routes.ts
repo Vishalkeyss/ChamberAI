@@ -6,6 +6,8 @@ import { ApplicationsRepository } from '../repositories/applications.repository'
 import { successResponse } from '../../../core/shared/response';
 import { AppError, ErrorCodes } from '../../../core/shared/errors';
 
+import { generatePrefixedId } from '../../../core/shared/crypto';
+
 export const adminApplicationsRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
 // All admin application routes require authenticated session
@@ -69,12 +71,91 @@ adminApplicationsRoutes.get(
 );
 
 /**
+ * GET /api/v1/admin/applications/approval-mode
+ * Retrieves current approval mode setting (manual review vs auto-approve)
+ */
+adminApplicationsRoutes.get(
+  '/admin/applications/approval-mode',
+  requireRole(['full_admin', 'chapter_admin', 'billing_admin']),
+  async (c) => {
+    const chamberId = c.get('chamberId');
+    if (!chamberId) {
+      throw new AppError(ErrorCodes.BAD_REQUEST, 'Chamber context required', 400);
+    }
+
+    const row = await c.env.DB
+      .prepare('SELECT auto_approve_applications FROM chamber_settings WHERE chamber_id = ?')
+      .bind(chamberId)
+      .first<{ auto_approve_applications: number }>();
+
+    const autoApprove = (row?.auto_approve_applications ?? 0) === 1;
+    const requestId = c.get('requestId');
+    return c.json(successResponse({ autoApprove }, { requestId }));
+  }
+);
+
+/**
+ * PATCH /api/v1/admin/applications/approval-mode
+ * Updates approval mode setting (manual review vs auto-approve)
+ */
+adminApplicationsRoutes.patch(
+  '/admin/applications/approval-mode',
+  requireRole(['full_admin']),
+  async (c) => {
+    const chamberId = c.get('chamberId');
+    if (!chamberId) {
+      throw new AppError(ErrorCodes.BAD_REQUEST, 'Chamber context required', 400);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const autoApprove = Boolean(body.autoApprove);
+    const val = autoApprove ? 1 : 0;
+    const now = new Date().toISOString();
+
+    const existing = await c.env.DB
+      .prepare('SELECT chamber_id FROM chamber_settings WHERE chamber_id = ?')
+      .bind(chamberId)
+      .first<{ chamber_id: string }>();
+
+    if (existing) {
+      await c.env.DB
+        .prepare('UPDATE chamber_settings SET auto_approve_applications = ?, updated_at = ? WHERE chamber_id = ?')
+        .bind(val, now, chamberId)
+        .run();
+    } else {
+      const id = generatePrefixedId('cfg');
+      await c.env.DB
+        .prepare(
+          `INSERT INTO chamber_settings (
+            id, chamber_id, org_name, auto_approve_applications, updated_at
+          ) VALUES (?, ?, 'Chamber of Commerce', ?, ?)`
+        )
+        .bind(id, chamberId, val, now)
+        .run();
+    }
+
+    const requestId = c.get('requestId');
+    return c.json(
+      successResponse(
+        {
+          autoApprove,
+          message: autoApprove
+            ? 'Application approval mode set to Auto-Approve'
+            : 'Application approval mode set to Manual Review',
+        },
+        { requestId }
+      )
+    );
+  }
+);
+
+/**
  * PATCH /api/v1/admin/applications/:id/approve
- * Approves application.
+ * Approves application and processes payment if pre-authorized card on file.
  */
 adminApplicationsRoutes.patch(
   '/admin/applications/:id/approve',
-  requireRole(['full_admin', 'chapter_admin', 'billing_admin']),
+  requireRole(['full_admin']),
   async (c) => {
     const chamberId = c.get('chamberId');
     const user = c.get('user');
@@ -89,7 +170,7 @@ adminApplicationsRoutes.patch(
       throw new AppError(ErrorCodes.NOT_FOUND, 'Application not found', 404);
     }
 
-    const success = await ApplicationsRepository.updateStatus(
+    const result = await ApplicationsRepository.updateStatus(
       c.env.DB,
       chamberId,
       id,
@@ -98,14 +179,33 @@ adminApplicationsRoutes.patch(
       user?.id
     );
 
-    if (!success) {
-      throw new AppError(ErrorCodes.INTERNAL_ERROR, 'Failed to approve application', 500);
+    if (!result.success) {
+      throw new AppError(
+        ErrorCodes.CONFLICT,
+        'Application cannot be approved: it is rejected or has already been approved',
+        409
+      );
     }
+
+    const message = result.charged
+      ? `Application approved successfully. Card ending in ${result.cardLastFour} was charged $${result.chargedAmount.toFixed(2)}.`
+      : 'Application approved successfully';
 
     const requestId = c.get('requestId');
     return c.json(
       successResponse(
-        { id, status: 'approved', message: 'Application approved successfully' },
+        {
+          id,
+          status: 'approved',
+          message,
+          charge: {
+            charged: result.charged,
+            amount: result.chargedAmount,
+            cardLastFour: result.cardLastFour,
+            transactionId: result.transactionId,
+            invoiceId: result.invoiceId,
+          },
+        },
         { requestId }
       )
     );
@@ -118,7 +218,7 @@ adminApplicationsRoutes.patch(
  */
 adminApplicationsRoutes.patch(
   '/admin/applications/:id/request-changes',
-  requireRole(['full_admin', 'chapter_admin', 'billing_admin']),
+  requireRole(['full_admin']),
   async (c) => {
     const chamberId = c.get('chamberId');
     const user = c.get('user');
@@ -168,7 +268,7 @@ adminApplicationsRoutes.patch(
  */
 adminApplicationsRoutes.patch(
   '/admin/applications/:id/reject',
-  requireRole(['full_admin', 'chapter_admin', 'billing_admin']),
+  requireRole(['full_admin']),
   async (c) => {
     const chamberId = c.get('chamberId');
     const user = c.get('user');

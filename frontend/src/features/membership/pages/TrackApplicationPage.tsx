@@ -18,6 +18,7 @@ import {
 import { trackApplication, resubmitApplication, type ApplicationTrackingData } from '../services/applications.api';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { isValidPhoneNumber, normalizePhoneNumber } from '@/lib/validation';
 
 export interface TrackApplicationPageProps {
   initialCode?: string;
@@ -97,10 +98,15 @@ export const TrackApplicationPage: React.FC<TrackApplicationPageProps> = ({
   const handleResubmit = async () => {
     if (!applicationData) return;
 
+    if (editPhone.trim() && !isValidPhoneNumber(editPhone.trim())) {
+      toast.error('Please enter a valid USA phone number (+1 (555) 019-2834)');
+      return;
+    }
+
     setIsResubmitting(true);
     try {
       const payload = {
-        businessPhone: editPhone.trim() || undefined,
+        businessPhone: editPhone.trim() ? normalizePhoneNumber(editPhone.trim()) : undefined,
         businessDetails: {
           website: editWebsite.trim() || undefined,
           description: editDescription.trim() || undefined,
@@ -334,6 +340,7 @@ export const TrackApplicationPage: React.FC<TrackApplicationPageProps> = ({
                       type="text"
                       value={editPhone}
                       onChange={(e) => setEditPhone(e.target.value)}
+                      placeholder="+1 (555) 019-2834"
                       className="mt-1 px-2.5 py-1.5 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 w-full"
                     />
                   ) : (

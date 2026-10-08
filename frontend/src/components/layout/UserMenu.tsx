@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User as UserIcon, LogOut, Settings } from 'lucide-react';
+import { User as UserIcon, LogOut, Settings, Pencil } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +21,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { useAuth } from '@/hooks/useAuth';
 
 export interface UserMenuProps {
   user: {
@@ -29,6 +30,7 @@ export interface UserMenuProps {
     email: string;
     role: string;
     avatarUrl?: string | null;
+    businessName?: string;
   };
   onLogout?: () => Promise<void> | void;
   onEditProfile?: () => void;
@@ -41,6 +43,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({
   onEditProfile,
   onAccountSettings,
 }) => {
+  const { logout } = useAuth();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -50,9 +53,8 @@ export const UserMenu: React.FC<UserMenuProps> = ({
       if (onLogout) {
         await onLogout();
       } else {
-        // Fallback default: purge token and redirect to home
-        localStorage.removeItem('auth_token');
-        sessionStorage.removeItem('auth_token');
+        // Fallback default: full logout (server session + local state), then go home
+        await logout();
         window.location.href = '/';
       }
     } finally {
@@ -82,44 +84,65 @@ export const UserMenu: React.FC<UserMenuProps> = ({
             aria-label="User account menu"
           >
             <Avatar className="h-9 w-9 border border-white/10 dark:border-white/10 shadow-xs">
-              {user.avatarUrl && <AvatarImage src={user.avatarUrl} alt={user.name} />}
+              {user.avatarUrl && (
+                <AvatarImage
+                  src={user.avatarUrl}
+                  alt={user.name}
+                  className="object-cover bg-white dark:bg-slate-900"
+                />
+              )}
               <AvatarFallback className="bg-[#1E3A5F] dark:bg-[#233F63] text-white font-bold text-xs">
                 {initials}
               </AvatarFallback>
             </Avatar>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56" sideOffset={8}>
-          <DropdownMenuLabel className="font-normal">
-            <div className="flex flex-col space-y-1">
-              <p className="text-sm font-semibold leading-none">{user.name}</p>
-              <p className="text-xs leading-none text-muted-foreground truncate">{user.email}</p>
-              <Badge
-                variant="secondary"
-                className="mt-1 w-fit text-[10px] uppercase font-bold tracking-wider"
-              >
-                {roleLabel}
-              </Badge>
+        <DropdownMenuContent align="end" className="w-64 p-2 rounded-xl shadow-lg border-border" sideOffset={8}>
+          <div className="flex items-center gap-3 p-2">
+            <Avatar className="h-10 w-10 border border-border shrink-0">
+              {user.avatarUrl && (
+                <AvatarImage
+                  src={user.avatarUrl}
+                  alt={user.name}
+                  className="object-cover bg-white dark:bg-slate-900"
+                />
+              )}
+              <AvatarFallback className="bg-[#1E3A5F] dark:bg-[#233F63] text-white font-bold text-sm">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex flex-col min-w-0">
+              <p className="text-sm font-bold text-foreground truncate">{user.name}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {user.businessName || user.email}
+              </p>
             </div>
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
+          </div>
+          <DropdownMenuSeparator className="my-1" />
           <DropdownMenuItem
-            className="gap-2 cursor-pointer"
-            onClick={onEditProfile || (() => (window.location.href = '/portal/profile'))}
+            className="gap-2.5 cursor-pointer py-2 px-2.5 rounded-lg font-medium text-sm text-foreground hover:bg-muted"
+            onClick={onEditProfile}
           >
-            <UserIcon className="h-4 w-4" />
+            <Pencil className="h-4 w-4 text-muted-foreground" />
             <span>Edit Profile</span>
           </DropdownMenuItem>
+          {onAccountSettings && (
+            <DropdownMenuItem
+              className="gap-2.5 cursor-pointer py-2 px-2.5 rounded-lg font-medium text-sm text-foreground hover:bg-muted"
+              onClick={onAccountSettings}
+            >
+              <Settings className="h-4 w-4 text-muted-foreground" />
+              <span>Account Settings</span>
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuSeparator className="my-1" />
+          <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-muted-foreground font-medium">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+            <span>All Systems Operational</span>
+          </div>
+          <DropdownMenuSeparator className="my-1" />
           <DropdownMenuItem
-            className="gap-2 cursor-pointer"
-            onClick={onAccountSettings || (() => (window.location.href = '/portal/settings'))}
-          >
-            <Settings className="h-4 w-4" />
-            <span>Account Settings</span>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            className="gap-2 text-destructive focus:text-destructive cursor-pointer"
+            className="gap-2.5 text-destructive focus:text-destructive cursor-pointer py-2 px-2.5 rounded-lg font-medium text-sm"
             onClick={() => setShowLogoutConfirm(true)}
           >
             <LogOut className="h-4 w-4" />

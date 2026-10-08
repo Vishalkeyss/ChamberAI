@@ -84,10 +84,16 @@ function createMockDb() {
 
   const applications = new Map<string, any>();
   const activityLogs: any[] = [];
+  const settings = new Map<string, number>();
+  const paymentMethods: any[] = [];
+  const invoices: any[] = [];
 
   return {
     _applications: applications,
     _activityLogs: activityLogs,
+    _settings: settings,
+    _paymentMethods: paymentMethods,
+    _invoices: invoices,
     batch: async (statements: any[]) => {
       const results: any[] = [];
       for (const stmt of statements) {
@@ -143,10 +149,36 @@ function createMockDb() {
             return null;
           }
           if (normalized.includes('SELECT auto_approve_applications FROM chamber_settings WHERE chamber_id = ?')) {
-            return { auto_approve_applications: 0 } as T;
+            const chamberId = boundParams[0];
+            const s = settings.get(chamberId) ?? 0;
+            return { auto_approve_applications: s } as T;
+          }
+          if (normalized.includes('SELECT chamber_id FROM chamber_settings WHERE chamber_id = ?')) {
+            const chamberId = boundParams[0];
+            return settings.has(chamberId) ? ({ chamber_id: chamberId } as T) : null;
           }
           if (normalized.includes('SELECT id FROM users WHERE chamber_id = ?')) {
             return { id: 'usr_admin_001' } as T;
+          }
+          if (normalized.includes('SELECT id, status FROM users WHERE email = ?')) {
+            return null; // Simulate new user creation
+          }
+          if (normalized.includes('FROM applications a') && normalized.includes('WHERE a.chamber_id = ? AND a.id = ?')) {
+            const [chamberId, id] = boundParams;
+            const app = applications.get(id);
+            if (app && app.chamber_id === chamberId) {
+              const plan = plans.get(app.plan_id);
+              const chapter = app.chapter_id ? chapters.get(app.chapter_id) : null;
+              return {
+                ...app,
+                plan_name: plan?.name,
+                plan_accent_color: plan?.accent_color,
+                plan_price: plan?.price,
+                plan_pricing_basis: plan?.pricing_basis,
+                chapter_name: chapter?.name,
+              } as T;
+            }
+            return null;
           }
           if (normalized.includes('FROM applications a') && normalized.includes('WHERE a.chamber_id = ? AND a.tracking_code = ?')) {
             const [chamberId, trackingCode] = boundParams;
@@ -169,9 +201,91 @@ function createMockDb() {
           return null;
         },
         all: async <T = any>(): Promise<{ results: T[] }> => {
+          if (normalized.includes('FROM applications a')) {
+            const chamberId = boundParams[0];
+            const results: any[] = [];
+            for (const app of applications.values()) {
+              if (app.chamber_id === chamberId) {
+                const plan = plans.get(app.plan_id);
+                const chapter = app.chapter_id ? chapters.get(app.chapter_id) : null;
+                results.push({
+                  ...app,
+                  plan_name: plan?.name,
+                  plan_accent_color: plan?.accent_color,
+                  plan_price: plan?.price,
+                  plan_pricing_basis: plan?.pricing_basis,
+                  chapter_name: chapter?.name,
+                });
+              }
+            }
+            return { results } as any;
+          }
           return { results: [] };
         },
         run: async () => {
+          if (normalized.includes('UPDATE chamber_settings SET auto_approve_applications = ?')) {
+            const [val, , chamberId] = boundParams;
+            settings.set(chamberId, Number(val));
+            return { success: true, meta: { changes: 1 } };
+          }
+          if (normalized.includes('INSERT INTO chamber_settings')) {
+            const [, chamberId, , val] = boundParams;
+            // INSERT INTO chamber_settings (id, chamber_id, org_name, auto_approve_applications, updated_at) VALUES (?, ?, 'Chamber of Commerce', ?, ?)
+            // boundParams: [id, chamberId, val, now]
+            settings.set(chamberId, Number(boundParams[2]));
+            return { success: true, meta: { changes: 1 } };
+          }
+          if (normalized.includes('INSERT INTO payment_methods')) {
+            // VALUES (?, ?, ?, 'card', ?, ?, ?, ?, 1, ?, ?)
+            // boundParams: [pmId, chamber_id, userId, brand, lastFour, expiryMonth, expiryYear, gatewayToken, now]
+            const [id, chamberId, userId, brand, lastFour, expiryMonth, expiryYear, gatewayToken] = boundParams;
+            paymentMethods.push({
+              id,
+              chamber_id: chamberId,
+              user_id: userId,
+              brand,
+              last_four: lastFour,
+              expiry_month: expiryMonth,
+              expiry_year: expiryYear,
+              is_default: 1,
+              gateway_token: gatewayToken,
+            });
+            return { success: true, meta: { changes: 1 } };
+          }
+          if (normalized.includes('INSERT INTO invoices')) {
+            const [
+              id,
+              chamberId,
+              invoiceNumber,
+              userId,
+              description,
+              amount,
+              totalAmount,
+              status,
+              dueDate,
+              paidAt,
+              paymentMethodId,
+              txnId,
+              planId,
+            ] = boundParams;
+            invoices.push({
+              id,
+              chamber_id: chamberId,
+              invoice_number: invoiceNumber,
+              user_id: userId,
+              description,
+              amount,
+              total_amount: totalAmount,
+              currency: 'USD',
+              status,
+              due_date: dueDate,
+              paid_at: paidAt,
+              payment_method_id: paymentMethodId,
+              payment_gateway_txn_id: txnId,
+              related_plan_id: planId,
+            });
+            return { success: true, meta: { changes: 1 } };
+          }
           if (normalized.includes('INSERT INTO applications')) {
             const [
               id,
@@ -214,6 +328,46 @@ function createMockDb() {
             activityLogs.push(boundParams);
             return { success: true, meta: { changes: 1 } };
           }
+          if (normalized.includes('UPDATE applications SET status = ?')) {
+            const [status, adminNotes, kanbanStage, updatedAt, chamberId, id] = boundParams;
+            const app = applications.get(id);
+            if (app && app.chamber_id === chamberId) {
+              app.status = status;
+              app.admin_notes = adminNotes;
+              app.kanban_stage = kanbanStage;
+              app.updated_at = updatedAt;
+              return { success: true, meta: { changes: 1 } };
+            }
+            return { success: true, meta: { changes: 0 } };
+          }
+          if (normalized.includes('UPDATE applications') && normalized.includes('converted_user_id IS NULL')) {
+            const [adminNotes, userId, updatedAt, chamberId, id] = boundParams;
+            const app = applications.get(id);
+            if (
+              app &&
+              app.chamber_id === chamberId &&
+              !app.converted_user_id &&
+              ['pending', 'changes_requested', 'approved'].includes(app.status)
+            ) {
+              app.status = 'approved';
+              app.admin_notes = adminNotes;
+              app.kanban_stage = 'approved';
+              app.converted_user_id = userId;
+              app.updated_at = updatedAt;
+              return { success: true, meta: { changes: 1 } };
+            }
+            return { success: true, meta: { changes: 0 } };
+          }
+          if (normalized.includes('UPDATE applications SET converted_user_id = ?')) {
+            const [userId, updatedAt, id] = boundParams;
+            const app = applications.get(id);
+            if (app) {
+              app.converted_user_id = userId;
+              app.updated_at = updatedAt;
+              return { success: true, meta: { changes: 1 } };
+            }
+            return { success: true, meta: { changes: 0 } };
+          }
           if (normalized.includes('UPDATE applications')) {
             const [
               applicantName,
@@ -241,7 +395,7 @@ function createMockDb() {
             }
             return { success: true, meta: { changes: 0 } };
           }
-          return { success: true, meta: { changes: 0 } };
+          return { success: true, meta: { changes: 1 } };
         },
       };
 
@@ -453,5 +607,237 @@ describe('Prompt 02.2: Public Membership Applications Integration Tests', () => 
     const checkJson: any = await checkRes.json();
     assert.equal(checkJson.data.status, 'pending');
     assert.equal(checkJson.data.businessPhone, '+1 (570) 555-9999');
+  });
+
+  it('7. POST /api/v1/public/applications accepts pre-authorized card details', async () => {
+    const app = createApp();
+
+    const payload = {
+      applicantName: 'Sarah Jenkins',
+      businessEmail: 'sarah.jenkins@acmecorp.com',
+      businessPhone: '+1 (555) 987-6543',
+      businessName: 'Acme Global Ventures',
+      planId: 'plan_gold_001',
+      paymentMethod: {
+        type: 'card',
+        cardholderName: 'Sarah Jenkins',
+        brand: 'visa',
+        lastFour: '4242',
+        expiryMonth: 12,
+        expiryYear: 2028,
+        gatewayToken: 'tok_preauth_test_123',
+      },
+      businessDetails: {
+        website: 'https://acmeglobal.example.com',
+        industry: 'Professional Services',
+      },
+    };
+
+    const res = await app.request('/api/v1/public/applications', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-chamber-id': 'ch_test_tenant',
+      },
+      body: JSON.stringify(payload),
+    }, env);
+
+    assert.equal(res.status, 201);
+    const json: any = await res.json();
+    assert.equal(json.success, true);
+    assert.equal(json.data.status, 'pending');
+
+    // Verify paymentMethod is stored in application business_details_json
+    const createdApp = env.DB._applications.get(json.data.id);
+    assert.ok(createdApp);
+    const details = JSON.parse(createdApp.business_details_json);
+    assert.ok(details.paymentMethod);
+    assert.equal(details.paymentMethod.lastFour, '4242');
+    assert.equal(details.paymentMethod.brand, 'visa');
+  });
+
+  it('8. GET and PATCH /api/v1/admin/applications/approval-mode toggles approval mode', async () => {
+    const app = createApp();
+
+    // Authenticate as full_admin
+    const token = 'sess_admin_test_token';
+    await env.KV.put(
+      `session:${token}`,
+      JSON.stringify({
+        userId: 'usr_admin_001',
+        chamberId: 'ch_test_tenant',
+        email: 'admin@chamber.org',
+        roles: [{ roleId: 'full_admin', scopeType: 'chamber', scopeId: 'ch_test_tenant' }],
+        highestRole: 'full_admin',
+      })
+    );
+
+    // Default mode should be manual review (false)
+    const getRes = await app.request('/api/v1/admin/applications/approval-mode', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'x-chamber-id': 'ch_test_tenant',
+      },
+    }, env);
+
+    assert.equal(getRes.status, 200);
+    const getJson: any = await getRes.json();
+    assert.equal(getJson.success, true);
+    assert.equal(getJson.data.autoApprove, false);
+
+    // Toggle to auto-approve (true)
+    const patchRes = await app.request('/api/v1/admin/applications/approval-mode', {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'x-chamber-id': 'ch_test_tenant',
+      },
+      body: JSON.stringify({ autoApprove: true }),
+    }, env);
+
+    assert.equal(patchRes.status, 200);
+    const patchJson: any = await patchRes.json();
+    assert.equal(patchJson.success, true);
+    assert.equal(patchJson.data.autoApprove, true);
+
+    // Verify updated mode persists on subsequent GET
+    const verifyRes = await app.request('/api/v1/admin/applications/approval-mode', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'x-chamber-id': 'ch_test_tenant',
+      },
+    }, env);
+    const verifyJson: any = await verifyRes.json();
+    assert.equal(verifyJson.data.autoApprove, true);
+
+    // Switch back to manual review as default
+    await app.request('/api/v1/admin/applications/approval-mode', {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'x-chamber-id': 'ch_test_tenant',
+      },
+      body: JSON.stringify({ autoApprove: false }),
+    }, env);
+  });
+
+  it('9. PATCH /api/v1/admin/applications/:id/approve vaults card, issues unpaid invoice, and blocks re-approval', async () => {
+    const app = createApp();
+    const token = 'sess_admin_test_token';
+
+    // Submit an application with a pre-authorized card
+    const submitRes = await app.request('/api/v1/public/applications', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-chamber-id': 'ch_test_tenant',
+      },
+      body: JSON.stringify({
+        applicantName: 'Michael Scott',
+        businessEmail: 'michael@dundermifflin.com',
+        businessPhone: '+1 (570) 555-0123',
+        businessName: 'Dunder Mifflin Paper Co',
+        planId: 'plan_gold_001', // Gold plan = $500.00
+        paymentMethod: {
+          type: 'card',
+          cardholderName: 'Michael Scott',
+          brand: 'visa',
+          lastFour: '8888',
+          expiryMonth: 10,
+          expiryYear: 2029,
+          gatewayToken: 'tok_preauth_dm_8888',
+        },
+      }),
+    }, env);
+
+    const submitJson: any = await submitRes.json();
+    const appId = submitJson.data.id;
+
+    // Admin approves the application
+    const approveRes = await app.request(`/api/v1/admin/applications/${appId}/approve`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'x-chamber-id': 'ch_test_tenant',
+      },
+    }, env);
+
+    assert.equal(approveRes.status, 200);
+    const approveJson: any = await approveRes.json();
+    assert.equal(approveJson.success, true);
+    assert.equal(approveJson.data.status, 'approved');
+    // No payment gateway is integrated: approval must never fake a charge.
+    assert.equal(approveJson.data.charge.charged, false);
+    assert.equal(approveJson.data.charge.amount, 0);
+    assert.equal(approveJson.data.charge.transactionId, null);
+    assert.ok(approveJson.data.charge.invoiceId);
+
+    // Verify card metadata was vaulted in payment_methods
+    const vaulted = env.DB._paymentMethods.find((p: any) => p.last_four === '8888');
+    assert.ok(vaulted);
+    assert.equal(vaulted.brand, 'visa');
+
+    // Verify invoice was created as unpaid with no gateway transaction
+    const invoice = env.DB._invoices.find((i: any) => i.id === approveJson.data.charge.invoiceId);
+    assert.ok(invoice);
+    assert.equal(invoice.status, 'unpaid');
+    assert.equal(invoice.amount, 500);
+    assert.ok(!invoice.payment_gateway_txn_id);
+
+    // A second approval must be rejected and must not provision duplicates
+    const invoiceCount = env.DB._invoices.length;
+    const reapproveRes = await app.request(`/api/v1/admin/applications/${appId}/approve`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'x-chamber-id': 'ch_test_tenant',
+      },
+    }, env);
+    assert.equal(reapproveRes.status, 409);
+    assert.equal(env.DB._invoices.length, invoiceCount);
+  });
+
+  it('10. Auto-Approve Mode: Automatically approves on submission without faking a charge', async () => {
+    const app = createApp();
+
+    // Set auto-approve setting in chamber
+    env.DB._settings.set('ch_test_tenant', 1);
+
+    const res = await app.request('/api/v1/public/applications', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-chamber-id': 'ch_test_tenant',
+      },
+      body: JSON.stringify({
+        applicantName: 'Pam Beesly',
+        businessEmail: 'pam@artstudio.com',
+        businessPhone: '+1 (570) 555-5555',
+        businessName: 'Pam Art Studio',
+        planId: 'plan_gold_001',
+        paymentMethod: {
+          type: 'card',
+          cardholderName: 'Pam Beesly',
+          brand: 'mastercard',
+          lastFour: '1234',
+          expiryMonth: 5,
+          expiryYear: 2028,
+        },
+      }),
+    }, env);
+
+    assert.equal(res.status, 201);
+    const json: any = await res.json();
+    assert.equal(json.success, true);
+    assert.equal(json.data.status, 'approved');
+    // Without a payment gateway, auto-approval must not claim a charge.
+    assert.doesNotMatch(json.data.message, /charged/i);
+
+    // Reset back to manual review default
+    env.DB._settings.set('ch_test_tenant', 0);
   });
 });

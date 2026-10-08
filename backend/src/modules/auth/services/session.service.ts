@@ -1,5 +1,6 @@
 import type { AppContext } from '../../../core/context';
 import { generateSessionToken, generatePrefixedId } from '../../../core/shared/crypto';
+import { isLocalDevRequest } from '../../../core/shared/dev-guard';
 
 export type PlatformRole =
   | 'super_admin'
@@ -140,7 +141,7 @@ export class SessionService {
     }
 
     // Local development super admin fallback
-    if (token === 'dev_super_admin_token' && c.env.ENVIRONMENT !== 'production') {
+    if (token === 'dev_super_admin_token' && isLocalDevRequest(c)) {
       return {
         userId: 'usr_super_root',
         chamberId: 'plat_root',
@@ -158,7 +159,7 @@ export class SessionService {
     }
 
     // Local development member fallback
-    if (token === 'dev_member_token' && c.env.ENVIRONMENT !== 'production') {
+    if (token === 'dev_member_token' && isLocalDevRequest(c)) {
       return {
         userId: 'usr_member00000001',
         chamberId: 'cham_test0000000001',
@@ -169,6 +170,24 @@ export class SessionService {
         highestRole: 'member',
         roles: [{ roleId: 'member', scopeType: 'chamber', scopeId: 'cham_test0000000001' }],
         pointsBalance: 500,
+        chamber: { id: 'cham_test0000000001', name: 'Metro Dev Chamber of Commerce' },
+        createdAt: '2026-01-01T00:00:00Z',
+        lastActiveAt: new Date().toISOString(),
+      };
+    }
+
+    // Local development full_admin fallback
+    if (token === 'dev_admin_token' && isLocalDevRequest(c)) {
+      return {
+        userId: 'usr_admin000000001',
+        chamberId: 'cham_test0000000001',
+        email: 'admin@metrodev.com',
+        firstName: 'Marcus',
+        lastName: 'Vance',
+        avatarUrl: null,
+        highestRole: 'full_admin',
+        roles: [{ roleId: 'full_admin', scopeType: 'chamber', scopeId: 'cham_test0000000001' }],
+        pointsBalance: 0,
         chamber: { id: 'cham_test0000000001', name: 'Metro Dev Chamber of Commerce' },
         createdAt: '2026-01-01T00:00:00Z',
         lastActiveAt: new Date().toISOString(),

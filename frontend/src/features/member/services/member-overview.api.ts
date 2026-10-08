@@ -8,8 +8,11 @@ export interface OnboardingSteps {
 export interface MemberOverviewData {
   membership: {
     tierName: string;
+    planId?: string | null;
+    planPrice?: number;
     status: string;
     memberIdDisplay: string;
+    memberSince?: string;
     renewalDate: string | null;
   };
   kpis: {
@@ -18,7 +21,7 @@ export interface MemberOverviewData {
     eventsAttended: number;
     pointsBalance: number;
   };
-  onboarding: {
+  onboarding?: {
     isComplete: boolean;
     completionPct: number;
     steps: OnboardingSteps;

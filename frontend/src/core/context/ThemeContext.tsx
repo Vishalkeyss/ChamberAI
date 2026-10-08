@@ -62,7 +62,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!saved) {
       saved = getSharedCookie(THEME_STORAGE_KEY);
     }
-    return saved && ['light', 'dark', 'system'].includes(saved) ? (saved as Theme) : 'system';
+    return saved && ['light', 'dark', 'system'].includes(saved) ? (saved as Theme) : 'light';
   });
 
   const [language, setLanguageState] = useState<SupportedLanguage>(() => {

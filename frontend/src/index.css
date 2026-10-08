@@ -171,12 +171,74 @@ body.dark,
   color: #E6EDF7 !important;
 }
 
+/* ============================================================
+   UNIVERSAL SLEEK SCROLLBAR SYSTEM
+   - Only the floating rounded bar (thumb) is visible
+   - Track is 100% transparent (no bulky gray/white gutters)
+   - Arrow buttons are completely hidden (no square corner bleed)
+   - Contained cleanly inside all modal rounded borders
+============================================================ */
+
+/* WebKit / Blink (Chromium, Chrome, Edge, Safari, Brave) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-track-piece {
+  background: transparent !important;
+}
+
+::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent !important;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.4);
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(107, 114, 128, 0.75);
+}
+
+/* Dark mode scrollbars */
 html.dark ::-webkit-scrollbar-thumb,
-[data-theme="dark"] ::-webkit-scrollbar-thumb {
-  background: #2D4B7A;
+[data-theme="dark"] ::-webkit-scrollbar-thumb,
+.dark ::-webkit-scrollbar-thumb {
+  background-color: rgba(100, 116, 139, 0.45);
 }
 
 html.dark ::-webkit-scrollbar-thumb:hover,
-[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
-  background: #3B5F94;
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover,
+.dark ::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(148, 163, 184, 0.8);
+}
+
+/* Firefox standard scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(156, 163, 175, 0.4) transparent;
+}
+
+html.dark *,
+[data-theme="dark"] *,
+.dark * {
+  scrollbar-color: rgba(100, 116, 139, 0.45) transparent;
+}
+
+/* Modal-specific scrollbar containment */
+[role="dialog"],
+[data-slot="dialog-content"],
+.modal-scrollbar {
+  scrollbar-width: thin;
 }

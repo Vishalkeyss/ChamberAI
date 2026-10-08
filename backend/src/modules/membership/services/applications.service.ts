@@ -33,13 +33,20 @@ export class ApplicationsService {
     // 3. Persist Application & Audit Log
     const result = await ApplicationsRepository.create(db, chamberId, input, autoApprove);
 
+    let message = 'Application submitted successfully';
+    if (autoApprove) {
+      if (result.chargeResult?.charged) {
+        message = `Application approved automatically! Card ending in ${result.chargeResult.cardLastFour} charged $${result.chargeResult.chargedAmount.toFixed(2)}.`;
+      } else {
+        message = 'Application approved automatically';
+      }
+    }
+
     return {
       id: result.id,
       trackingCode: result.trackingCode,
       status: result.status,
-      message: autoApprove
-        ? 'Application approved automatically'
-        : 'Application submitted successfully',
+      message,
     };
   }
 

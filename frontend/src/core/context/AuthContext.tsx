@@ -6,6 +6,7 @@ import React, {
   useCallback,
   useRef,
 } from 'react';
+import { queryClient } from '@/core/query/query-client';
 
 export type RoleIdentifier =
   | 'super_admin'
@@ -94,7 +95,7 @@ export function checkScopeAccess(
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [token, setToken] = useState<string | null>(() => {
     try {
-      return localStorage.getItem('auth_token');
+      return localStorage.getItem('auth_token') || localStorage.getItem('session_token');
     } catch {
       return null;
     }
@@ -165,9 +166,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } else {
       localStorage.removeItem('auth_token');
+      localStorage.removeItem('session_token');
       localStorage.removeItem('auth_user');
       localStorage.removeItem('auth_roles');
       localStorage.removeItem('auth_chamber');
+      sessionStorage.removeItem('auth_token');
+      // Drop every cached server response so the next user never sees this user's data.
+      queryClient.clear();
     }
     setToken(newToken);
     setUser(newUser);
@@ -177,7 +182,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // 1. Session Refresh / Introspection via GET /api/v1/auth/me
   const refreshSession = useCallback(async () => {
-    const currentToken = localStorage.getItem('auth_token');
+    const currentToken = localStorage.getItem('auth_token') || localStorage.getItem('session_token');
     if (!currentToken) {
       setIsLoading(false);
       return;

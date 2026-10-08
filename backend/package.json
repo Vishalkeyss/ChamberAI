@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy --minify",
+    "deploy": "echo \"Use npm run deploy:staging or npm run deploy:production\" && exit 1",
+    "deploy:staging": "wrangler deploy --minify --env staging",
+    "deploy:production": "wrangler deploy --minify --env production",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test src/test/*.test.ts",
     "d1:migrate:local": "wrangler d1 migrations apply DB --local",

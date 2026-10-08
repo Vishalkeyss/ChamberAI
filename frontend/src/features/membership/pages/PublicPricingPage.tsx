@@ -3,6 +3,7 @@ import type { ChapterOption, MembershipPlan } from '../types';
 import { fetchActiveChapters, fetchPublicPlans } from '../services/plans.api';
 import { PricingCard } from '../components/PricingCard';
 import { ApplyPlanModal } from '../components/ApplyPlanModal';
+import { MembershipAuthChoiceModal } from '../components/MembershipAuthChoiceModal';
 import { toast } from 'sonner';
 
 export interface PublicPricingPageProps {
@@ -12,6 +13,7 @@ export interface PublicPricingPageProps {
   onJoinPlan?: (plan: MembershipPlan, price: number, chapterId?: string) => void;
   onUpgradePlan?: (plan: MembershipPlan, price: number) => void;
   onTrackApplication?: (code: string) => void;
+  onExistingMemberSignIn?: () => void;
 }
 
 export const PublicPricingPage: React.FC<PublicPricingPageProps> = ({
@@ -21,13 +23,15 @@ export const PublicPricingPage: React.FC<PublicPricingPageProps> = ({
   onJoinPlan,
   onUpgradePlan,
   onTrackApplication,
+  onExistingMemberSignIn,
 }) => {
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [chapters, setChapters] = useState<ChapterOption[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Application Modal state
+  // Application & Choice Modal states
   const [selectedPlan, setSelectedPlan] = useState<MembershipPlan | null>(null);
+  const [isChoiceModalOpen, setIsChoiceModalOpen] = useState(false);
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
 
   const loadData = async () => {
@@ -58,7 +62,7 @@ export const PublicPricingPage: React.FC<PublicPricingPageProps> = ({
       return;
     }
     setSelectedPlan(plan);
-    setIsApplyModalOpen(true);
+    setIsChoiceModalOpen(true);
   };
 
   return (
@@ -93,6 +97,22 @@ export const PublicPricingPage: React.FC<PublicPricingPageProps> = ({
         </div>
       )}
 
+      {/* Choice Modal: Existing Member (Sign In) vs New Member (Sign Up) */}
+      <MembershipAuthChoiceModal
+        isOpen={isChoiceModalOpen}
+        onClose={() => setIsChoiceModalOpen(false)}
+        plan={selectedPlan}
+        chamberName={chamberName}
+        onSignIn={() => {
+          setIsChoiceModalOpen(false);
+          onExistingMemberSignIn?.();
+        }}
+        onSignUp={() => {
+          setIsChoiceModalOpen(false);
+          setIsApplyModalOpen(true);
+        }}
+      />
+
       {/* Exact Application Form Modal matching reference prototype & user screenshot */}
       <ApplyPlanModal
         isOpen={isApplyModalOpen}
@@ -102,6 +122,10 @@ export const PublicPricingPage: React.FC<PublicPricingPageProps> = ({
         chamberSlug={chamberSlug}
         chapters={chapters}
         onTrackApplication={onTrackApplication}
+        onSignInClick={() => {
+          setIsApplyModalOpen(false);
+          onExistingMemberSignIn?.();
+        }}
       />
     </div>
   );

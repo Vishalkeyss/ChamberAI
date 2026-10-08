@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { CheckCircle2, Globe, UserCog, Check } from 'lucide-react';
+import { getChamberSetupProgress } from '../utils/setup-progress';
 import type { PlatformChamber } from '../types';
 
 interface ChamberDetailModalProps {
@@ -44,22 +45,11 @@ export const ChamberDetailModal: React.FC<ChamberDetailModalProps> = ({
     }).format(val);
   };
 
-  // Setup progress checklist items matching reference screenshot
-  const isAustin = chamber.name.includes('Austin');
-  const isDenverOrPortland = chamber.name.includes('Denver') || chamber.name.includes('Portland');
-
-  const setupItems = [
-    { key: 'plan', label: 'Set up a membership plan', done: true },
-    { key: 'gateway', label: 'Connect a payment gateway', done: true },
-    { key: 'branding', label: 'Add your logo & brand colors', done: true },
-    { key: 'members', label: 'Add or invite your first members', done: true },
-    { key: 'event', label: 'Create your first event', done: isAustin || isDenverOrPortland },
-    { key: 'engagement', label: 'Set up a newsletter or alert workflow', done: isAustin },
-    { key: 'jobs', label: 'Post to the Job Board', done: isAustin },
-  ];
-
-  const doneCount = setupItems.filter((i) => i.done).length;
-  const setupPct = Math.round((doneCount / setupItems.length) * 100);
+  // Setup progress checklist items computed dynamically
+  const setupProgress = getChamberSetupProgress(chamber);
+  const setupItems = setupProgress.steps;
+  const doneCount = setupProgress.completedSteps;
+  const setupPct = setupProgress.percent;
 
   const displaySubdomain = `${chamber.subdomain}.chamber1to1meet.ai`;
   const isCustomDomainVerified =

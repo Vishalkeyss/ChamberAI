@@ -1,6 +1,19 @@
 export type ChamberLifecycleStatus = 'active' | 'suspended' | 'pending_setup';
 export type DomainVerificationStatus = 'verified' | 'pending_dns' | 'none';
 
+export interface ChamberSetupStep {
+  key: string;
+  label: string;
+  done: boolean;
+}
+
+export interface ChamberSetupProgress {
+  percent: number;
+  completedSteps: number;
+  totalSteps: number;
+  steps: ChamberSetupStep[];
+}
+
 export interface PlatformChamber {
   id: string;
   name: string;
@@ -17,6 +30,7 @@ export interface PlatformChamber {
   revenueTotal: number;
   createdAt: string;
   updatedAt: string | null;
+  setupProgress?: ChamberSetupProgress;
 }
 
 export interface ProvisionChamberPayload {
@@ -26,6 +40,7 @@ export interface ProvisionChamberPayload {
   custom_domain?: string | null;
   admin_name: string;
   admin_email: string;
+  admin_phone?: string | null;
 }
 
 export interface UpdateChamberStatusPayload {

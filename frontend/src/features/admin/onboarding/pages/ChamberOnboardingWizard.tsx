@@ -5,6 +5,10 @@ import {
   Plus,
   Trash2,
   Loader2,
+  CheckCircle2,
+  ShieldCheck,
+  Lock,
+  ArrowRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -39,6 +43,15 @@ const STEP_TITLES = [
   'Invite First Members',
 ];
 
+const THEME_PRESETS = [
+  { id: 'navy', name: 'Navy Executive', primary: '#0B2447', text: '#FFFFFF', bg: '#F5F7FA' },
+  { id: 'emerald', name: 'Emerald Growth', primary: '#064E3B', text: '#FFFFFF', bg: '#F0FDF4' },
+  { id: 'indigo', name: 'Royal Indigo', primary: '#312E81', text: '#FFFFFF', bg: '#EEF2FF' },
+  { id: 'slate', name: 'Modern Slate', primary: '#0F172A', text: '#FFFFFF', bg: '#F8FAFC' },
+  { id: 'crimson', name: 'Crimson Crest', primary: '#881337', text: '#FFFFFF', bg: '#FFF1F2' },
+  { id: 'cyan', name: 'Ocean Cyan', primary: '#0E7490', text: '#FFFFFF', bg: '#ECFEFF' },
+];
+
 export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = ({
   chamberName = 'Austin Chamber of Commerce',
   onComplete,
@@ -47,16 +60,19 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isOnboardingCompleted, setIsOnboardingCompleted] = useState<boolean>(false);
 
   // Step 1: Chamber Profile
   const [chamberNameInput, setChamberNameInput] = useState<string>(chamberName);
   const [city, setCity] = useState<string>('');
 
-  // Step 2: Branding
+  // Step 2: Branding & Theme
   const [primaryColor, setPrimaryColor] = useState<string>('#0B2447');
   const [primaryTextColor, setPrimaryTextColor] = useState<string>('#FFFFFF');
   const [backgroundColor, setBackgroundColor] = useState<string>('#F5F7FA');
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [heroHeadline, setHeroHeadline] = useState<string>('Where Local Businesses Connect, Grow & Prosper');
+  const [heroTagline, setHeroTagline] = useState<string>('Join our community of business pioneers, civic leaders, and local trade partners.');
 
   // Step 3: Payment Gateway
   const [gatewayProvider, setGatewayProvider] = useState<'stripe' | 'razorpay' | 'paypal'>('stripe');
@@ -79,6 +95,10 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
     fetchOnboardingState()
       .then((data) => {
         if (data) {
+          if (data.is_completed) {
+            setIsOnboardingCompleted(true);
+          }
+
           if (data.profile?.org_name) {
             setChamberNameInput(data.profile.org_name);
           } else if (chamberName) {
@@ -100,6 +120,12 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
           }
           if (data.branding?.logo_url) {
             setLogoUrl(data.branding.logo_url);
+          }
+          if (data.branding?.hero_headline) {
+            setHeroHeadline(data.branding.hero_headline);
+          }
+          if (data.branding?.hero_tagline) {
+            setHeroTagline(data.branding.hero_tagline);
           }
 
           if (data.payment_gateway) {
@@ -331,20 +357,20 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
     try {
       const activePlans = offerPlans
         ? plans
-            .filter((p) => p.selected)
-            .map((p) => {
-              const numericPrice = parseFloat(p.price.replace(/[^0-9.]/g, '')) || 0;
-              return {
-                id: p.id,
-                name: p.name,
-                price: numericPrice,
-                billing_frequency: p.billing_frequency,
-                pricing_basis: p.pricing_basis,
-                features: p.features,
-                accent_color: p.accent_color,
-                is_popular: false,
-              };
-            })
+          .filter((p) => p.selected)
+          .map((p) => {
+            const numericPrice = parseFloat(p.price.replace(/[^0-9.]/g, '')) || 0;
+            return {
+              id: p.id,
+              name: p.name,
+              price: numericPrice,
+              billing_frequency: p.billing_frequency,
+              pricing_basis: p.pricing_basis,
+              features: p.features,
+              accent_color: p.accent_color,
+              is_popular: false,
+            };
+          })
         : [];
 
       const payload: OnboardingFinishPayload = {
@@ -359,20 +385,22 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
           text_color: primaryTextColor,
           background_color: backgroundColor,
           logo_url: logoUrl,
-          hero_headline: 'Empowering Local Businesses',
+          hero_headline: heroHeadline.trim() || 'Empowering Local Businesses to Connect, Grow & Prosper',
+          hero_tagline: heroTagline.trim() || 'Join our community of business pioneers, civic leaders, and local trade partners.',
         },
         payment_gateway: gatewayConnected
           ? {
-              provider: gatewayProvider,
-              publishable_key: publishableKey,
-              secret_key: secretKey,
-            }
+            provider: gatewayProvider,
+            publishable_key: publishableKey,
+            secret_key: secretKey,
+          }
           : undefined,
         plans: activePlans,
       };
 
       await submitFinishOnboarding(payload);
       toast.success('Chamber onboarding completed successfully!');
+      setIsOnboardingCompleted(true);
       onComplete();
     } catch (err: any) {
       toast.error(err.message || 'Failed to finalize setup');
@@ -383,13 +411,112 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
 
   const currentChamberName = chamberNameInput.trim() || chamberName;
 
+  if (isLoading) {
+    return (
+      <div className="w-full py-16 flex justify-center items-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-xs text-muted-foreground font-medium">Checking onboarding status...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isOnboardingCompleted) {
+    return (
+      <div className="w-full py-6 flex justify-center items-start">
+        <div className="bg-card text-card-foreground rounded-2xl border border-border shadow-xs p-8 max-w-3xl w-full mx-auto space-y-6">
+          {/* Header Badge */}
+          <div className="text-center space-y-3">
+            <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mx-auto flex items-center justify-center border border-emerald-500/20 shadow-xs">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 mb-2">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Onboarding Completed &amp; Active</span>
+              </div>
+              <h1 className="text-2xl font-bold tracking-tight text-card-foreground">
+                Chamber Onboarding Completed
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+                Initial chamber setup is finished. The chamber profile, branding, payments, and membership plans are activated.
+              </p>
+            </div>
+          </div>
+
+          {/* Locked Notice */}
+          <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-900 dark:text-amber-200">
+            <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-amber-900 dark:text-amber-100">Onboarding Wizard is Locked</p>
+              <p className="mt-0.5 text-amber-800/90 dark:text-amber-300/90">
+                You cannot re-run the initial onboarding wizard once completed. To modify your chamber name, brand colors, payment integrations, or plans, navigate to the dedicated admin sections below.
+              </p>
+            </div>
+          </div>
+
+          {/* Configuration Summary */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="p-4 rounded-xl bg-muted/40 border border-border">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Chamber</p>
+              <p className="text-sm font-bold text-foreground mt-1 truncate">{currentChamberName}</p>
+              <p className="text-xs text-muted-foreground">{city || 'Primary Region'}</p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-muted/40 border border-border">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Brand Palette</p>
+              <div className="flex items-center gap-2 mt-1.5">
+                <span
+                  className="w-5 h-5 rounded-full border border-black/10 shadow-xs shrink-0"
+                  style={{ backgroundColor: primaryColor }}
+                />
+                <span className="text-xs font-mono font-medium text-foreground">{primaryColor}</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1">Theme applied</p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-muted/40 border border-border">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Plans Configured</p>
+              <p className="text-sm font-bold text-foreground mt-1">
+                {plans.filter((p) => p.selected).length} Active {plans.filter((p) => p.selected).length === 1 ? 'Tier' : 'Tiers'}
+              </p>
+              <p className="text-xs text-muted-foreground">Live for public signups</p>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={onComplete}
+              className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Go to Admin Dashboard</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+            {onExit && (
+              <button
+                type="button"
+                onClick={onExit}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-border bg-card text-foreground font-semibold text-sm hover:bg-muted transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full py-6 flex justify-center items-start">
       {/* Main Card Container */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs p-8 max-w-4xl w-full mx-auto">
         {/* Header */}
         <h1 className="text-xl font-bold text-slate-900 dark:text-white">
-          Admin Onboarding Wizard
+          Chamber Onboarding Wizard
         </h1>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
           Step {currentStep} of 5 — {STEP_TITLES[currentStep - 1]} · {currentChamberName}
@@ -457,110 +584,165 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
           </div>
         )}
 
-        {/* STEP 2: Branding */}
+        {/* STEP 2: Branding & Theme Selection */}
         {currentStep === 2 && (
           <div className="mt-4 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            {/* Left Column: Color Controls */}
-            <div className="lg:col-span-7">
-              {/* Primary Color */}
+            {/* Left Column: Theme Presets & Color Controls */}
+            <div className="lg:col-span-7 space-y-6">
+              {/* Curated Theme Presets */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Primary Color
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                  Curated Chamber Theme Presets
                 </label>
-                <div className="flex items-center gap-3">
-                  <label
-                    className="w-11 h-11 rounded-md border border-slate-200 dark:border-slate-700 cursor-pointer shadow-2xs relative overflow-hidden flex-shrink-0"
-                    style={{ backgroundColor: primaryColor }}
-                  >
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">
+                  Select a pre-designed palette or customize each color individually below.
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                  {THEME_PRESETS.map((preset) => {
+                    const isSelected =
+                      primaryColor.toLowerCase() === preset.primary.toLowerCase() &&
+                      primaryTextColor.toLowerCase() === preset.text.toLowerCase() &&
+                      backgroundColor.toLowerCase() === preset.bg.toLowerCase();
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => {
+                          setPrimaryColor(preset.primary);
+                          setPrimaryTextColor(preset.text);
+                          setBackgroundColor(preset.bg);
+                        }}
+                        className={cn(
+                          "flex flex-col p-2.5 rounded-xl border text-left transition-all cursor-pointer",
+                          isSelected
+                            ? "border-primary ring-2 ring-primary/30 bg-primary/5 shadow-xs"
+                            : "border-slate-200 dark:border-slate-700 hover:border-slate-300 bg-white dark:bg-slate-800"
+                        )}
+                      >
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <div
+                            className="w-4 h-4 rounded-full border border-black/10 shadow-2xs"
+                            style={{ backgroundColor: preset.primary }}
+                          />
+                          <div
+                            className="w-4 h-4 rounded-full border border-black/10 shadow-2xs"
+                            style={{ backgroundColor: preset.bg }}
+                          />
+                        </div>
+                        <span className="text-xs font-semibold text-slate-900 dark:text-white truncate">
+                          {preset.name}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono mt-0.5">
+                          {preset.primary}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Custom Color Controls */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-slate-100 dark:border-slate-800">
+                {/* Primary Color */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Primary Color
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <label
+                      className="w-10 h-10 rounded-lg border border-slate-200 dark:border-slate-700 cursor-pointer shadow-2xs relative overflow-hidden flex-shrink-0"
+                      style={{ backgroundColor: primaryColor }}
+                    >
+                      <input
+                        type="color"
+                        value={primaryColor}
+                        onChange={(e) => setPrimaryColor(e.target.value)}
+                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                      />
+                    </label>
                     <input
-                      type="color"
+                      type="text"
                       value={primaryColor}
                       onChange={(e) => setPrimaryColor(e.target.value)}
-                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                      className="w-full px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-mono uppercase text-slate-900 dark:text-white focus:outline-hidden focus:ring-1 focus:ring-primary"
                     />
-                  </label>
-                  <input
-                    type="text"
-                    value={primaryColor}
-                    onChange={(e) => setPrimaryColor(e.target.value)}
-                    className="w-36 px-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-mono uppercase text-slate-900 dark:text-white focus:outline-hidden focus:ring-1 focus:ring-[#0B2447]"
-                  />
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Headers, hero banner & buttons
+                  </p>
                 </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                  Used for buttons, headers & highlights
-                </p>
-              </div>
 
-              {/* Primary Text Color */}
-              <div className="mt-5">
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Primary Text Color
-                </label>
-                <div className="flex items-center gap-3">
-                  <label
-                    className="w-11 h-11 rounded-md border border-slate-200 dark:border-slate-700 cursor-pointer shadow-2xs relative overflow-hidden flex-shrink-0"
-                    style={{ backgroundColor: primaryTextColor }}
-                  >
+                {/* Primary Text Color */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Text on Primary
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <label
+                      className="w-10 h-10 rounded-lg border border-slate-200 dark:border-slate-700 cursor-pointer shadow-2xs relative overflow-hidden flex-shrink-0"
+                      style={{ backgroundColor: primaryTextColor }}
+                    >
+                      <input
+                        type="color"
+                        value={primaryTextColor}
+                        onChange={(e) => setPrimaryTextColor(e.target.value)}
+                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                      />
+                    </label>
                     <input
-                      type="color"
+                      type="text"
                       value={primaryTextColor}
                       onChange={(e) => setPrimaryTextColor(e.target.value)}
-                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                      className="w-full px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-mono uppercase text-slate-900 dark:text-white focus:outline-hidden focus:ring-1 focus:ring-primary"
                     />
-                  </label>
-                  <input
-                    type="text"
-                    value={primaryTextColor}
-                    onChange={(e) => setPrimaryTextColor(e.target.value)}
-                    className="w-36 px-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-mono uppercase text-slate-900 dark:text-white focus:outline-hidden focus:ring-1 focus:ring-[#0B2447]"
-                  />
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Text on headers & buttons
+                  </p>
                 </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                  Text color shown on top of your Primary Color (e.g. header text)
-                </p>
-              </div>
 
-              {/* Background Color */}
-              <div className="mt-5">
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Background Color
-                </label>
-                <div className="flex items-center gap-3">
-                  <label
-                    className="w-11 h-11 rounded-md border border-slate-200 dark:border-slate-700 cursor-pointer shadow-2xs relative overflow-hidden flex-shrink-0"
-                    style={{ backgroundColor: backgroundColor }}
-                  >
+                {/* Background Color */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Background Color
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <label
+                      className="w-10 h-10 rounded-lg border border-slate-200 dark:border-slate-700 cursor-pointer shadow-2xs relative overflow-hidden flex-shrink-0"
+                      style={{ backgroundColor: backgroundColor }}
+                    >
+                      <input
+                        type="color"
+                        value={backgroundColor}
+                        onChange={(e) => setBackgroundColor(e.target.value)}
+                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                      />
+                    </label>
                     <input
-                      type="color"
+                      type="text"
                       value={backgroundColor}
                       onChange={(e) => setBackgroundColor(e.target.value)}
-                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                      className="w-full px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-mono uppercase text-slate-900 dark:text-white focus:outline-hidden focus:ring-1 focus:ring-primary"
                     />
-                  </label>
-                  <input
-                    type="text"
-                    value={backgroundColor}
-                    onChange={(e) => setBackgroundColor(e.target.value)}
-                    className="w-36 px-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-mono uppercase text-slate-900 dark:text-white focus:outline-hidden focus:ring-1 focus:ring-[#0B2447]"
-                  />
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Portal page background
+                  </p>
                 </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                  Page background across the member & guest portal
-                </p>
               </div>
 
-              {/* Chamber Logo */}
-              <div className="mt-5">
+              {/* Chamber Logo Upload */}
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                   Chamber Logo
                 </label>
                 <div className="flex items-center gap-3">
                   <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-base shadow-xs"
+                    className="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-base shadow-xs overflow-hidden"
                     style={{ backgroundColor: primaryColor, color: primaryTextColor }}
                   >
                     {logoUrl ? (
-                      <img src={logoUrl} alt="Logo" className="w-full h-full object-cover rounded-xl" />
+                      <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
                     ) : (
                       getInitials(currentChamberName)
                     )}
@@ -575,11 +757,51 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
                       onChange={handleLogoUpload}
                     />
                   </label>
+                  {logoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setLogoUrl(null)}
+                      className="text-xs text-red-500 hover:underline"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Headline & Tagline Customization */}
+              <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Public Hero Headline
+                  </label>
+                  <input
+                    type="text"
+                    value={heroHeadline}
+                    onChange={(e) => setHeroHeadline(e.target.value)}
+                    placeholder="Where Local Businesses Connect, Grow & Prosper"
+                    className="w-full px-3.5 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Prominently displayed on your chamber's public homepage.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Public Hero Tagline
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={heroTagline}
+                    onChange={(e) => setHeroTagline(e.target.value)}
+                    placeholder="Join our community of business pioneers, civic leaders, and local trade partners."
+                    className="w-full px-3.5 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-primary resize-none"
+                  />
                 </div>
               </div>
 
               {/* Navigation */}
-              <div className="flex items-center gap-3 mt-8">
+              <div className="flex items-center gap-3 mt-8 pt-4 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setCurrentStep(1)}
@@ -598,44 +820,83 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
             </div>
 
             {/* Right Column: LIVE PREVIEW */}
-            <div className="lg:col-span-5">
+            <div className="lg:col-span-5 sticky top-24">
               <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">
-                LIVE PREVIEW
+                DYNAMIC LIVE PREVIEW
               </div>
-              <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-xs bg-white dark:bg-slate-900">
+              <div className="border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-md bg-white dark:bg-slate-900">
                 {/* Header bar */}
                 <div
-                  className="px-4 py-3.5 flex items-center gap-2.5 transition-colors"
+                  className="px-4 py-3 flex items-center justify-between gap-2.5 transition-colors"
                   style={{ backgroundColor: primaryColor, color: primaryTextColor }}
                 >
-                  <div className="px-1.5 py-0.5 rounded text-[11px] font-bold border border-white/20 bg-white/10 flex-shrink-0">
-                    {getInitials(currentChamberName)}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-6 h-6 rounded-md bg-white/20 flex items-center justify-center text-[10px] font-bold shrink-0 overflow-hidden">
+                      {logoUrl ? (
+                        <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                      ) : (
+                        getInitials(currentChamberName)
+                      )}
+                    </div>
+                    <div className="text-xs font-bold truncate">
+                      {currentChamberName}
+                    </div>
                   </div>
-                  <div className="text-xs font-semibold truncate">
-                    {currentChamberName}
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    <span className="opacity-80">Directory</span>
+                    <span className="opacity-80">Plans</span>
+                    <span
+                      className="px-2 py-0.5 rounded-full font-semibold shadow-2xs"
+                      style={{ backgroundColor: primaryTextColor, color: primaryColor }}
+                    >
+                      Join
+                    </span>
                   </div>
                 </div>
-                {/* Body */}
+
+                {/* Hero preview banner */}
+                <div
+                  className="px-5 py-6 text-center transition-colors border-b border-white/10"
+                  style={{ backgroundColor: primaryColor, color: primaryTextColor }}
+                >
+                  <span className="inline-block text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full bg-white/15 border border-white/20 mb-2">
+                    EST. 2025 · ACTIVE NETWORK
+                  </span>
+                  <div className="text-sm font-bold leading-snug max-w-xs mx-auto">
+                    {heroHeadline || currentChamberName}
+                  </div>
+                  <p className="text-[11px] mt-1.5 opacity-80 max-w-xs mx-auto line-clamp-2 leading-relaxed">
+                    {heroTagline}
+                  </p>
+                </div>
+
+                {/* Body with page background */}
                 <div
                   className="p-5 transition-colors"
                   style={{ backgroundColor: backgroundColor }}
                 >
                   <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                    Welcome back 👋
+                    Membership Opportunities
                   </div>
-                  <div className="w-36 h-2 rounded bg-slate-200/80 dark:bg-slate-700 mt-2" />
-                  <div className="w-24 h-2 rounded bg-slate-200/60 dark:bg-slate-700 mt-1.5" />
-                  <button
-                    type="button"
-                    style={{ backgroundColor: primaryColor, color: primaryTextColor }}
-                    className="w-full py-2 rounded-lg text-xs font-semibold mt-4 shadow-xs"
-                  >
-                    Become a Member
-                  </button>
+                  <div className="mt-2.5 p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xs">
+                    <div className="text-xs font-bold text-slate-900 dark:text-white">
+                      Business Pioneer Tier
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      Networking, directory & exclusive events
+                    </div>
+                    <button
+                      type="button"
+                      style={{ backgroundColor: primaryColor, color: primaryTextColor }}
+                      className="w-full py-1.5 rounded-lg text-xs font-semibold mt-3 shadow-xs"
+                    >
+                      Join Chamber
+                    </button>
+                  </div>
                 </div>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-3 text-center sm:text-left">
-                This is how your colors & logo will look on the guest site and member portal.
+                This exact theme, colors, headline, and logo will be automatically rendered on your public chamber page.
               </p>
             </div>
           </div>
@@ -655,8 +916,8 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
                   provider === 'stripe'
                     ? 'Stripe'
                     : provider === 'razorpay'
-                    ? 'Razorpay'
-                    : 'PayPal';
+                      ? 'Razorpay'
+                      : 'PayPal';
                 const isSelected = gatewayProvider === provider;
                 return (
                   <button
@@ -985,7 +1246,7 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
               <button
                 type="button"
                 onClick={handleDownloadSampleCsv}
-                className="underline text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-slate-900 mt-2 block mx-auto cursor-pointer"
+                className="underline text-xs font-semibold text-slate-700 dark:white hover:text-slate-900 mt-2 block mx-auto cursor-pointer"
               >
                 Download a sample CSV to see it formatted correctly.
               </button>

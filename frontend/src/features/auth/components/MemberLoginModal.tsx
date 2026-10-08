@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import type { RegisteredChamber } from '@/features/public/data/chambers';
 import { ResendCountdown } from './ResendCountdown';
+import { isValidPhoneNumber, isValidEmail, normalizePhoneNumber } from '@/lib/validation';
 
 export interface MemberLoginModalProps {
   isOpen: boolean;
@@ -26,6 +27,7 @@ export interface MemberLoginModalProps {
   onSuccess?: (authData: any) => void;
   initialPortal?: 'member' | 'admin' | 'super_admin';
   allowSuperAdmin?: boolean;
+  onApplyClick?: () => void;
 }
 
 export const MemberLoginModal: React.FC<MemberLoginModalProps> = ({
@@ -35,6 +37,7 @@ export const MemberLoginModal: React.FC<MemberLoginModalProps> = ({
   onSuccess,
   initialPortal = 'member',
   allowSuperAdmin = false,
+  onApplyClick,
 }) => {
   const { login } = useAuth();
   const effectiveInitialPortal =
@@ -78,9 +81,21 @@ export const MemberLoginModal: React.FC<MemberLoginModalProps> = ({
 
   const handleSendOtp = async (e?: React.FormEvent): Promise<boolean> => {
     if (e) e.preventDefault();
-    if (!identifier.trim()) {
+    const trimmedIdentifier = identifier.trim();
+    if (!trimmedIdentifier) {
       setError('Please enter your email address or mobile number.');
       return false;
+    }
+    if (trimmedIdentifier.includes('@')) {
+      if (!isValidEmail(trimmedIdentifier)) {
+        setError('Please enter a valid email address (e.g., name@example.com).');
+        return false;
+      }
+    } else {
+      if (!isValidPhoneNumber(trimmedIdentifier)) {
+        setError('Please enter a valid USA phone number (+1 (555) 019-2834).');
+        return false;
+      }
     }
     if (!agreed) {
       setError('Please accept the Terms & Conditions and Privacy Policy to continue.');
@@ -111,7 +126,9 @@ export const MemberLoginModal: React.FC<MemberLoginModalProps> = ({
             }),
         },
         body: JSON.stringify({
-          identifier: identifier.trim(),
+          identifier: trimmedIdentifier.includes('@')
+            ? trimmedIdentifier
+            : normalizePhoneNumber(trimmedIdentifier),
           portal: portalParam,
         }),
       });
@@ -318,7 +335,7 @@ export const MemberLoginModal: React.FC<MemberLoginModalProps> = ({
                       }}
                       type="text"
                       inputMode="email"
-                      placeholder="Enter your email or mobile number"
+                      placeholder="you@business.com or +1 (555) 019-2834"
                       className="w-full pl-9 pr-3 py-2.5 rounded-lg text-sm outline-none transition bg-background text-foreground border border-border focus:border-primary focus:ring-1 focus:ring-primary"
                       autoFocus
                     />
@@ -428,6 +445,23 @@ export const MemberLoginModal: React.FC<MemberLoginModalProps> = ({
                         Chamber Admin
                       </button>
                     </div>
+                  </div>
+                )}
+
+                {onApplyClick && portalMode === 'member' && (
+                  <div className="pt-2 text-center text-xs text-muted-foreground border-t border-border/50">
+                    <span>Not a member yet? </span>
+                    <button
+                      type="button"
+                      id="btn-login-modal-apply"
+                      onClick={() => {
+                        onClose();
+                        onApplyClick();
+                      }}
+                      className="font-semibold text-emerald-600 dark:text-emerald-400 underline hover:opacity-80 cursor-pointer transition-opacity"
+                    >
+                      Apply for membership
+                    </button>
                   </div>
                 )}
               </form>

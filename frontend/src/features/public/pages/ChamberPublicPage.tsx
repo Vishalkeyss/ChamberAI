@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Sun,
   Moon,
@@ -14,6 +14,8 @@ import type { RegisteredChamber } from '../data/chambers';
 import LOGO_SRC from '@/assets/logo.png';
 import { MemberLoginModal } from '@/features/auth/components/MemberLoginModal';
 import { PublicPricingPage } from '@/features/membership/pages/PublicPricingPage';
+import { PublicDirectoryPage } from './PublicDirectoryPage';
+import { EventsExplorerPage } from '@/features/events/pages/EventsExplorerPage';
 import { cn } from '@/lib/utils';
 
 export interface ChamberPublicPageProps {
@@ -53,10 +55,44 @@ export const ChamberPublicPage: React.FC<ChamberPublicPageProps> = ({
   onBackToDirectory,
   onLoginSuccess,
 }) => {
-  const [activeTab, setActiveTab] = useState('home');
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const p = window.location.pathname.replace(/^\//, '').replace(/\/$/, '').toLowerCase();
+      if (['directory', 'about', 'plans', 'events', 'news', 'blog', 'grader', 'store', 'careers', 'contact'].includes(p)) {
+        return p;
+      }
+      if (p === 'membership') return 'plans';
+    }
+    return 'home';
+  });
   const [language, setLanguage] = useState<'en' | 'es'>('en');
   const [isMemberLoginModalOpen, setIsMemberLoginModalOpen] = useState(false);
   const { theme, setTheme } = useTheme();
+
+  const handleTabSelect = (tabId: string) => {
+    setActiveTab(tabId);
+    if (typeof window !== 'undefined') {
+      const targetPath = tabId === 'home' ? '/' : `/${tabId}`;
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState({}, '', targetPath);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const p = window.location.pathname.replace(/^\//, '').replace(/\/$/, '').toLowerCase();
+      if (['directory', 'about', 'plans', 'events', 'news', 'blog', 'grader', 'store', 'careers', 'contact'].includes(p)) {
+        setActiveTab(p);
+      } else if (p === 'membership') {
+        setActiveTab('plans');
+      } else if (!p) {
+        setActiveTab('home');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // City display for headline:
   const city = (() => {
@@ -75,6 +111,20 @@ export const ChamberPublicPage: React.FC<ChamberPublicPageProps> = ({
       : '0';
 
   const foundedYear = chamber.estYear || '2025';
+
+  // Dynamic tenant-specific branding theme tokens
+  const primaryColor = chamber.primaryColor || '#0B2447';
+  const textColor = chamber.textColor || '#FFFFFF';
+  const backgroundColor = chamber.backgroundColor || '#F5F7FA';
+  const logoUrl = chamber.logoUrl;
+  const headline =
+    chamber.heroHeadline ||
+    chamber.headline ||
+    `Where ${city}'s Businesses Connect, Grow & Refer Each Other`;
+  const tagline =
+    chamber.heroTagline ||
+    chamber.tagline ||
+    "Join the region's most active business chamber — networking events, verified referrals, and a marketplace built for local trade.";
 
   const latestNews = [
     {
@@ -116,30 +166,42 @@ export const ChamberPublicPage: React.FC<ChamberPublicPageProps> = ({
   ];
 
   return (
-    <div className="min-h-screen flex flex-col font-sans bg-background text-foreground transition-colors duration-200">
-      {/* SiteHeader — Dynamic tokens from src/index.css */}
-      <header className="shrink-0 sticky top-0 z-40 bg-header-nav transition-colors duration-200">
-        {/* Row 1: Utility bar (central token: --header-utility) */}
-        <div className="flex items-center justify-between gap-2 px-3 sm:px-6 min-h-[40px] bg-header-utility border-b border-white/10">
+    <div
+      className="min-h-screen flex flex-col font-sans bg-background text-foreground transition-colors duration-200"
+      style={{
+        ['--chamber-primary' as any]: primaryColor,
+        ['--header-nav' as any]: primaryColor,
+        ['--hero' as any]: primaryColor,
+        ...(theme === 'light' && chamber.backgroundColor ? { ['--background' as any]: backgroundColor } : {}),
+      }}
+    >
+      {/* SiteHeader — Dynamic tokens customized per chamber */}
+      <header
+        className="shrink-0 sticky top-0 z-40 transition-colors duration-200"
+        style={{ backgroundColor: primaryColor }}
+      >
+        {/* Row 1: Utility bar */}
+        <div
+          className="flex items-center justify-between gap-2 px-3 sm:px-6 min-h-[40px] border-b border-white/10"
+          style={{ backgroundColor: primaryColor, color: textColor }}
+        >
           <div className="flex items-center gap-2 min-w-0">
-            <img
-              src={LOGO_SRC}
-              alt="121 Meet"
-              className="w-5 h-5 rounded object-contain shrink-0 bg-white"
-            />
-            <span className="font-semibold text-white truncate" style={{ fontSize: 17 }}>
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt={chamber.name}
+                className="w-6 h-6 rounded object-cover shrink-0 bg-white"
+              />
+            ) : (
+              <img
+                src={LOGO_SRC}
+                alt="121 Meet"
+                className="w-5 h-5 rounded object-contain shrink-0 bg-white"
+              />
+            )}
+            <span className="font-semibold truncate" style={{ fontSize: 17, color: textColor }}>
               {chamber.name}
             </span>
-            {onBackToDirectory && (
-              <button
-                type="button"
-                onClick={onBackToDirectory}
-                className="hidden sm:inline-flex items-center text-xs text-white/70 hover:text-white transition-colors cursor-pointer ml-2 px-2 py-0.5 rounded bg-white/10 hover:bg-white/20"
-                title="Return to Platform Chamber Directory"
-              >
-                ← All Chambers
-              </button>
-            )}
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -233,8 +295,11 @@ export const ChamberPublicPage: React.FC<ChamberPublicPageProps> = ({
           </div>
         </div>
 
-        {/* Row 2: Main nav (central token: --header-nav) */}
-        <div className="flex items-center gap-2 px-3 sm:px-6 min-h-[56px] bg-header-nav">
+        {/* Row 2: Main nav */}
+        <div
+          className="flex items-center gap-2 px-3 sm:px-6 min-h-[56px]"
+          style={{ backgroundColor: primaryColor, color: textColor }}
+        >
           {/* Centered navigation items */}
           <div
             className="flex items-center justify-center py-1"
@@ -246,12 +311,17 @@ export const ChamberPublicPage: React.FC<ChamberPublicPageProps> = ({
                 <button
                   key={n.id}
                   type="button"
-                  onClick={() => setActiveTab(n.id)}
-                  className={cn(
-                    "rounded-md font-medium shrink-0 cursor-pointer px-3.5 py-1.5 text-sm whitespace-nowrap transition-colors",
+                  onClick={() => handleTabSelect(n.id)}
+                  style={
                     active
-                      ? "bg-white/15 dark:bg-white/10 text-white font-semibold"
-                      : "text-white/70 hover:text-white hover:bg-white/5"
+                      ? { color: textColor, backgroundColor: 'rgba(255, 255, 255, 0.18)' }
+                      : { color: textColor, opacity: 0.8 }
+                  }
+                  className={cn(
+                    "rounded-md font-medium shrink-0 cursor-pointer px-3.5 py-1.5 text-sm whitespace-nowrap transition-all",
+                    active
+                      ? "font-semibold shadow-2xs"
+                      : "hover:opacity-100 hover:bg-white/10"
                   )}
                 >
                   {n.label}
@@ -282,8 +352,8 @@ export const ChamberPublicPage: React.FC<ChamberPublicPageProps> = ({
 
             <button
               type="button"
-              onClick={() => setActiveTab('plans')}
-              className="px-4 py-2 rounded-lg text-sm font-semibold inline-flex items-center gap-2 transition hover:opacity-90 active:scale-[0.98] cursor-pointer bg-blue-600 hover:bg-blue-500 text-white shadow-xs"
+              onClick={() => handleTabSelect('plans')}
+              className="px-4 py-2 rounded-lg text-sm font-semibold inline-flex items-center gap-2 transition hover:opacity-90 active:scale-[0.98] cursor-pointer shadow-xs bg-white text-slate-900 hover:bg-slate-100"
             >
               Join Now
             </button>
@@ -291,7 +361,7 @@ export const ChamberPublicPage: React.FC<ChamberPublicPageProps> = ({
         </div>
       </header>
 
-      {/* Main Page Content (central token: --hero, --section-news, --section-alt) */}
+      {/* Main Page Content */}
       <main className="flex-1">
         {activeTab === 'plans' ? (
           <div className="bg-background min-h-[calc(100vh-96px)]">
@@ -300,35 +370,75 @@ export const ChamberPublicPage: React.FC<ChamberPublicPageProps> = ({
               chamberSlug={chamber.slug}
               isMember={isAuthenticated}
               onTrackApplication={onTrackApplication}
+              onExistingMemberSignIn={() => setIsMemberLoginModalOpen(true)}
+            />
+          </div>
+        ) : activeTab === 'directory' ? (
+          <PublicDirectoryPage
+            chamberName={chamber.name}
+            chamberSlug={chamber.slug}
+            onNavigateToPlans={() => {
+              setActiveTab('plans');
+              if (typeof window !== 'undefined') {
+                window.history.pushState({}, '', '/plans');
+              }
+            }}
+          />
+        ) : activeTab === 'events' ? (
+          <div className="px-8 py-14 max-w-7xl mx-auto w-full">
+            <EventsExplorerPage
+              mode="public"
+              chamberName={chamber.name}
+              chamberSlug={chamber.slug}
+              onNavigateToPlans={() => {
+                setActiveTab('plans');
+                if (typeof window !== 'undefined') {
+                  window.history.pushState({}, '', '/plans');
+                }
+              }}
             />
           </div>
         ) : (
           <>
-            {/* GuestHome Hero Section */}
+            {/* Dynamic GuestHome Hero Section */}
             <div
-              className="px-8 py-16 text-center bg-hero border-b border-white/10 transition-colors duration-200"
+              className="px-8 py-16 text-center border-b border-white/10 transition-colors duration-200"
+              style={{ backgroundColor: primaryColor, color: textColor }}
             >
               {/* EST. Badge */}
-              <p className="inline-block text-sm font-bold tracking-wide uppercase mb-3 px-4 py-1.5 rounded-full mx-auto text-white bg-white/15 border border-white/20">
+              <p
+                className="inline-block text-sm font-bold tracking-wide uppercase mb-3 px-4 py-1.5 rounded-full mx-auto border"
+                style={{
+                  color: textColor,
+                  backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                  borderColor: 'rgba(255, 255, 255, 0.25)',
+                }}
+              >
                 EST. {foundedYear} · {memberCountFormatted}+ MEMBERS
               </p>
 
-              {/* Headline in max-w-2xl so it wraps exactly into 2 lines */}
-              <h1 className="text-4xl font-bold text-white leading-tight max-w-2xl mx-auto">
-                Where {city}'s Businesses Connect, Grow & Refer Each Other
+              {/* Headline */}
+              <h1
+                className="text-4xl font-bold leading-tight max-w-2xl mx-auto"
+                style={{ color: textColor }}
+              >
+                {headline}
               </h1>
 
               {/* Tagline */}
-              <p className="text-white/70 mt-4 max-w-xl mx-auto text-sm sm:text-base leading-relaxed">
-                Join the region's most active business chamber — networking events, verified referrals, and a marketplace built for local trade.
+              <p
+                className="mt-4 max-w-xl mx-auto text-sm sm:text-base leading-relaxed"
+                style={{ color: textColor, opacity: 0.85 }}
+              >
+                {tagline}
               </p>
 
               {/* CTA */}
               <div className="flex items-center gap-3 mt-8 justify-center">
                 <button
                   type="button"
-                  onClick={() => setActiveTab('plans')}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold inline-flex items-center gap-2 transition hover:opacity-90 active:scale-[0.98] cursor-pointer bg-white text-slate-900 border border-slate-200 shadow-sm hover:bg-slate-50"
+                  onClick={() => handleTabSelect('plans')}
+                  className="px-5 py-2.5 rounded-xl text-sm font-bold inline-flex items-center gap-2 transition hover:opacity-95 active:scale-[0.98] cursor-pointer shadow-md bg-white text-slate-900 border border-slate-200 hover:bg-slate-50"
                 >
                   <span>Become a Member</span>
                   <ArrowRight size={16} />
@@ -410,10 +520,12 @@ export const ChamberPublicPage: React.FC<ChamberPublicPageProps> = ({
         type="button"
         onClick={() => alert(`Ask the Chamber Assistant (${chamber.name})`)}
         aria-label="Ask the Chamber"
-        className="fixed bottom-6 right-6 z-50 flex items-center justify-center rounded-full transition hover:opacity-90 active:scale-95 cursor-pointer bg-header-nav dark:bg-primary text-white shadow-lg dark:shadow-blue-950/60"
+        className="fixed bottom-6 right-6 z-50 flex items-center justify-center rounded-full transition hover:opacity-90 active:scale-95 cursor-pointer shadow-lg"
         style={{
           width: 56,
           height: 56,
+          backgroundColor: primaryColor,
+          color: textColor,
         }}
       >
         <MessageCircle size={24} />
@@ -425,6 +537,7 @@ export const ChamberPublicPage: React.FC<ChamberPublicPageProps> = ({
         onClose={() => setIsMemberLoginModalOpen(false)}
         chamber={chamber}
         allowSuperAdmin={false}
+        onApplyClick={() => handleTabSelect('plans')}
         onSuccess={(authData) => {
           setIsMemberLoginModalOpen(false);
           if (onLoginSuccess) {

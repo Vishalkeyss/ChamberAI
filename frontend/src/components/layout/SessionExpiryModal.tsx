@@ -23,6 +23,7 @@ export const SessionExpiryModal: React.FC<SessionExpiryModalProps> = ({
 }) => {
   const handleRedirect = () => {
     localStorage.removeItem('auth_token');
+    localStorage.removeItem('session_token');
     sessionStorage.removeItem('auth_token');
     if (onLoginRedirect) {
       onLoginRedirect();

@@ -18,12 +18,20 @@ import {
   Mail,
   User,
   ExternalLink,
+  ArrowRight,
 } from 'lucide-react';
 import type { ChapterOption, MembershipPlan } from '../types';
 import { calculateDues } from '../services/plans.api';
 import { submitApplication } from '../services/applications.api';
+import {
+  PaymentCardInput,
+  detectCardBrand,
+  validateCardData,
+  type CardFormData,
+} from './PaymentCardInput';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { isValidPhoneNumber, normalizePhoneNumber } from '@/lib/validation';
 
 export interface ApplyPlanModalProps {
   isOpen: boolean;
@@ -33,6 +41,7 @@ export interface ApplyPlanModalProps {
   chamberSlug?: string;
   chapters?: ChapterOption[];
   onTrackApplication?: (code: string) => void;
+  onSignInClick?: () => void;
 }
 
 interface StaffMember {
@@ -50,6 +59,7 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
   chamberSlug,
   chapters = [],
   onTrackApplication,
+  onSignInClick,
 }) => {
   // Form fields
   const [fullName, setFullName] = useState('');
@@ -81,6 +91,16 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
   // Chapter
   const [selectedChapterId, setSelectedChapterId] = useState<string>('');
 
+  // Payment Pre-Authorization State
+  const [cardData, setCardData] = useState<CardFormData>({
+    cardholderName: '',
+    cardNumber: '',
+    brand: 'Visa',
+    expiry: '',
+    cvc: '',
+  });
+  const [cardError, setCardError] = useState<string | null>(null);
+
   // Submission & Dues state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false);
@@ -104,6 +124,14 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
       setCalculatedPrice(plan.price);
       setSubmittedData(null);
       setCopiedCode(false);
+      setCardData({
+        cardholderName: fullName || '',
+        cardNumber: '',
+        brand: 'Visa',
+        expiry: '',
+        cvc: '',
+      });
+      setCardError(null);
     }
   }, [isOpen, plan]);
 
@@ -159,11 +187,18 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
       : displayPrice;
 
   const handleAddStaff = () => {
-    if (!staffDraft.name.trim()) {
-      toast.error('Staff member name is required');
+    if (staffDraft.phone?.trim() && !isValidPhoneNumber(staffDraft.phone.trim())) {
+      toast.error('Please enter a valid USA phone number for representative (+1 (555) 019-2834)');
       return;
     }
-    setStaffList([...staffList, { ...staffDraft, name: staffDraft.name.trim() }]);
+    setStaffList([
+      ...staffList,
+      {
+        ...staffDraft,
+        name: staffDraft.name.trim(),
+        phone: staffDraft.phone?.trim() ? normalizePhoneNumber(staffDraft.phone.trim()) : '',
+      },
+    ]);
     setStaffDraft({ name: '', title: '', email: '', phone: '' });
     setIsAddingStaff(false);
   };
@@ -188,6 +223,11 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
       return;
     }
 
+    if (!isValidPhoneNumber(phone.trim())) {
+      toast.error('Please enter a valid USA phone number (+1 (555) 019-2834)');
+      return;
+    }
+
     if (plan.pricingBasis === 'by_employee_count' && !employeeCount) {
       toast.error('Please enter your number of employees for this tiered plan');
       return;
@@ -196,6 +236,34 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
     if (plan.pricingBasis === 'by_annual_revenue' && !revenue) {
       toast.error('Please enter your annual gross revenue for this tiered plan');
       return;
+    }
+
+    const effectivePrice = calculatedPrice ?? plan.price;
+
+    // Validate card details for paid plans
+    let paymentMethodPayload = undefined;
+    if (effectivePrice > 0) {
+      const validation = validateCardData(cardData);
+      if (!validation.valid) {
+        setCardError(validation.error || 'Please provide valid card details');
+        toast.error(validation.error || 'Please provide valid card details');
+        return;
+      }
+      setCardError(null);
+
+      const cardDigits = cardData.cardNumber.replace(/\D/g, '');
+      const [mmStr, yyStr] = cardData.expiry.split('/');
+      const mm = parseInt(mmStr, 10);
+      const fullYear = yyStr.length === 2 ? 2000 + parseInt(yyStr, 10) : parseInt(yyStr, 10);
+
+      paymentMethodPayload = {
+        type: 'card' as const,
+        cardholderName: cardData.cardholderName.trim() || fullName.trim(),
+        brand: cardData.brand || detectCardBrand(cardDigits),
+        lastFour: cardDigits.slice(-4),
+        expiryMonth: mm,
+        expiryYear: fullYear,
+      };
     }
 
     setIsSubmitting(true);
@@ -209,7 +277,8 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
         applicantName: fullName.trim(),
         businessName: businessName.trim(),
         businessEmail: email.trim().toLowerCase(),
-        businessPhone: phone.trim(),
+        businessPhone: normalizePhoneNumber(phone.trim()),
+        paymentMethod: paymentMethodPayload,
         businessDetails: {
           website: website.trim() || undefined,
           landingPage: landingPage.trim() || undefined,
@@ -223,6 +292,7 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
             other: youtube.trim() || undefined,
           },
           staff: staffList,
+          paymentMethod: paymentMethodPayload,
         },
       };
 
@@ -268,6 +338,25 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
             <X size={20} />
           </button>
         </div>
+
+        {/* Existing Member Sign In Banner */}
+        {onSignInClick && !submittedData && (
+          <div className="px-6 py-2.5 bg-blue-50/80 dark:bg-blue-950/40 border-b border-blue-100 dark:border-blue-900/50 flex items-center justify-between text-xs text-blue-900 dark:text-blue-200">
+            <span>Already a member of {chamberName}?</span>
+            <button
+              type="button"
+              id="btn-apply-modal-signin"
+              onClick={() => {
+                onClose();
+                onSignInClick();
+              }}
+              className="font-semibold underline hover:text-blue-700 dark:hover:text-blue-100 cursor-pointer inline-flex items-center gap-1 transition-colors"
+            >
+              Sign In to Your Account
+              <ArrowRight size={12} />
+            </button>
+          </div>
+        )}
 
         {/* Modal Content */}
         <div className="p-6 max-h-[75vh] overflow-y-auto space-y-4">
@@ -455,7 +544,7 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+91 98xxxxxxxx0"
+                    placeholder="+1 (555) 019-2834"
                     className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -660,7 +749,7 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
                       type="tel"
                       value={staffDraft.phone || ''}
                       onChange={(e) => setStaffDraft({ ...staffDraft, phone: e.target.value })}
-                      placeholder="Phone (e.g. (512) 555-0134)"
+                      placeholder="Phone (e.g. +1 (512) 555-0134)"
                       className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                     />
                     <div className="flex gap-2 pt-1">
@@ -718,6 +807,31 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
                 </div>
               )}
 
+              {/* Payment Pre-Authorization Card Input */}
+              {(calculatedPrice ?? plan.price) > 0 ? (
+                <PaymentCardInput
+                  cardData={cardData}
+                  onChange={(d) => {
+                    setCardData(d);
+                    if (cardError) setCardError(null);
+                  }}
+                  planPrice={calculatedPrice ?? plan.price}
+                  planName={plan.name}
+                  billingFrequency={plan.billingFrequency}
+                  error={cardError}
+                />
+              ) : (
+                <div className="p-3.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2.5">
+                  <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <div>
+                    <span className="font-bold block">Complimentary Plan</span>
+                    <span className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                      No credit card or payment pre-authorization is required to apply for this membership plan.
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* What happens next Card */}
               <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-xs space-y-2">
                 <p className="font-semibold text-slate-800 dark:text-slate-200">
@@ -726,19 +840,23 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
                 <div className="space-y-2 text-slate-600 dark:text-slate-300 text-[11px]">
                   <div className="flex items-start gap-2">
                     <span className="w-4 h-4 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">1</span>
-                    <span>Application enters {chamberName}'s review queue — no other chamber sees it.</span>
+                    <span>Application enters {chamberName}'s review queue — strictly tenant isolated.</span>
                   </div>
                   <div className="flex items-start gap-2">
                     <span className="w-4 h-4 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">2</span>
-                    <span>Admin approves / requests changes / rejects.</span>
+                    <span>Admin reviews details or sets auto-approval for qualified members.</span>
                   </div>
                   <div className="flex items-start gap-2">
                     <span className="w-4 h-4 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">3</span>
-                    <span>On approval, invoice is auto-generated for the plan fee.</span>
+                    <span>
+                      {(calculatedPrice ?? plan.price) > 0
+                        ? `On approval, your pre-authorized card is charged $${(calculatedPrice ?? plan.price).toLocaleString('en-US')}/yr and an invoice is generated.`
+                        : 'On approval, your complimentary membership is activated.'}
+                    </span>
                   </div>
                   <div className="flex items-start gap-2">
                     <span className="w-4 h-4 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">4</span>
-                    <span>After payment, you get member access + digital certificate.</span>
+                    <span>You receive instant member portal access, digital certificate, and chapter perks.</span>
                   </div>
                 </div>
               </div>

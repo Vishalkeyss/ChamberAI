@@ -14,7 +14,7 @@ export interface PublicFooterProps {
 export const PublicFooter: React.FC<PublicFooterProps> = ({
   chamberName = 'Greater Metro Chamber of Commerce',
   address = '100 Downtown Plaza, Suite 400, Metro City, MC 10001',
-  phone = '(555) 019-2831',
+  phone = '+1 (555) 019-2831',
   email = 'info@metrochamber.org',
 }) => {
   return (

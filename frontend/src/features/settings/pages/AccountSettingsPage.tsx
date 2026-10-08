@@ -24,6 +24,7 @@ import {
   revokeActiveSession,
   savePersonalApiKey,
 } from '../services/settings.api';
+import { isValidPhoneNumber, normalizePhoneNumber } from '@/lib/validation';
 import type {
   AccountSettingsData,
   NotificationPreferenceItem,
@@ -185,12 +186,19 @@ export const AccountSettingsPage: React.FC<AccountSettingsPageProps> = ({
     setIsSaving(true);
     setError(null);
     setSaveSuccessMessage(null);
+
+    if (isProfileDirty && profileForm.phone?.trim() && !isValidPhoneNumber(profileForm.phone.trim())) {
+      setError('Please enter a valid USA phone number (+1 (555) 019-2834).');
+      setIsSaving(false);
+      return;
+    }
+
     try {
       if (isProfileDirty) {
         await updateProfile({
           name: profileForm.name,
           title: profileForm.title,
-          phone: profileForm.phone,
+          phone: profileForm.phone ? normalizePhoneNumber(profileForm.phone.trim()) : null,
         });
       }
       if (isPrefsDirty) {

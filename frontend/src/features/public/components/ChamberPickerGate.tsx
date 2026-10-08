@@ -204,8 +204,22 @@ export const ChamberPickerGate: React.FC<ChamberPickerGateProps> = ({
                     className="w-full flex items-center justify-between gap-4 px-6 py-4.5 text-left hover:bg-muted/60 transition-colors group cursor-pointer"
                   >
                     <div className="flex items-center gap-4 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-muted border border-border flex items-center justify-center shrink-0 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors">
-                        <Landmark className="h-5 w-5" />
+                      <div
+                        className="w-10 h-10 rounded-xl border border-border flex items-center justify-center shrink-0 overflow-hidden text-xs font-bold shadow-2xs group-hover:scale-105 transition-transform"
+                        style={{
+                          backgroundColor: chamber.primaryColor || '#0B2447',
+                          color: chamber.textColor || '#FFFFFF',
+                        }}
+                      >
+                        {chamber.logoUrl ? (
+                          <img
+                            src={chamber.logoUrl}
+                            alt={chamber.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <Landmark className="h-5 w-5" style={{ color: chamber.textColor || '#FFFFFF' }} />
+                        )}
                       </div>
 
                       <div className="min-w-0">
