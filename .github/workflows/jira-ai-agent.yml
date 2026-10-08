@@ -834,27 +834,54 @@ jobs:
 
             console.log("Starting Gemini autonomous loop...");
 
-            const modelName = process.env.GEMINI_MODEL || "gemini-3.1-pro-preview";
-            console.log(`Using model: ${modelName}`);
+            const candidateModels = [
+              process.env.GEMINI_MODEL,
+              "gemini-3.8-flash",
+              "gemini-3.5-flash",
+              "gemini-2.5-flash",
+              "gemini-3.1-pro-preview"
+            ].filter(Boolean);
 
-            const chat = ai.chats.create({
-              model: modelName,
-              config: {
-                systemInstruction: systemPrompt,
-                tools: [{
-                  functionDeclarations: [
-                    readFileDeclaration,
-                    writeFileDeclaration,
-                    runCommandDeclaration,
-                    listFilesDeclaration
-                  ]
-                }]
+            let chat = null;
+            let response = null;
+            let selectedModel = "";
+
+            for (const modelToTry of candidateModels) {
+              console.log(`Attempting to connect with model: ${modelToTry}...`);
+              try {
+                chat = ai.chats.create({
+                  model: modelToTry,
+                  config: {
+                    systemInstruction: systemPrompt,
+                    tools: [{
+                      functionDeclarations: [
+                        readFileDeclaration,
+                        writeFileDeclaration,
+                        runCommandDeclaration,
+                        listFilesDeclaration
+                      ]
+                    }]
+                  }
+                });
+
+                response = await chat.sendMessage({
+                  message: `Please implement this task completely and verify with tests/build:\n\n${taskInstructions}`
+                });
+
+                selectedModel = modelToTry;
+                console.log(`Successfully started session with model: ${selectedModel}`);
+                break;
+              } catch (modelErr) {
+                console.log(`Model ${modelToTry} failed: ${modelErr.message}`);
+                if (modelErr.message?.includes("429") || modelErr.message?.includes("Quota exceeded") || modelErr.status === 429) {
+                  console.log(`Quota exceeded for ${modelToTry}. Trying next fallback model...`);
+                }
               }
-            });
+            }
 
-            let response = await chat.sendMessage({
-              message: `Please implement this task completely and verify with tests/build:\n\n${taskInstructions}`
-            });
+            if (!chat || !response) {
+              throw new Error("All candidate Gemini models failed to initialize. Please check your API key quota at https://aistudio.google.com/rate-limit");
+            }
 
             const maxTurns = 25;
             let turns = 0;
