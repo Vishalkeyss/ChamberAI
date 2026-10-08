@@ -16,9 +16,16 @@ import { EventCard } from '../components/EventCard';
 import { EventsCalendarGrid } from '../components/EventsCalendarGrid';
 import { EventsFilterSidebar } from '../components/EventsFilterSidebar';
 import { EventRegistrationModal } from '../components/EventRegistrationModal';
+import { EventSponsorshipModal } from '../components/EventSponsorshipModal';
+import { EventSponsorsSection } from '../components/EventSponsorsSection';
+import { EventFeedbackModal } from '../components/EventFeedbackModal';
+import { CertificateModal } from '../components/CertificateModal';
 import {
   fetchEvents,
   fetchEventsFilters,
+  fetchEventAttendance,
+  myRegistrationLabel,
+  type EventAttendance,
   type EventItem,
   type EventsMeta,
   type EventsFilters,
@@ -60,6 +67,11 @@ export const EventsExplorerPage: React.FC<EventsExplorerPageProps> = ({
   const [selectedEvent, setSelectedEvent] = useState<EventItem | null>(null);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [isRecapModalOpen, setIsRecapModalOpen] = useState(false);
+  // Prompt 04.4 / 04.5
+  const [isSponsorModalOpen, setIsSponsorModalOpen] = useState(false);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+  const [isCertificateOpen, setIsCertificateOpen] = useState(false);
+  const [attendance, setAttendance] = useState<EventAttendance | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -151,6 +163,11 @@ export const EventsExplorerPage: React.FC<EventsExplorerPageProps> = ({
   };
 
   const handleRegisterClick = (event: EventItem) => {
+    const registered = myRegistrationLabel(event.myRegistration);
+    if (registered) {
+      toast.info(`You are already registered for this event (${registered}).`);
+      return;
+    }
     // Full events stay registrable: the server places the registrant on the waitlist (§7.2).
     setSelectedEvent(event);
     setIsRegisterModalOpen(true);
@@ -160,6 +177,26 @@ export const EventsExplorerPage: React.FC<EventsExplorerPageProps> = ({
     setSelectedEvent(event);
     setIsRecapModalOpen(true);
   };
+
+  const handleSponsorClick = (event: EventItem) => {
+    setSelectedEvent(event);
+    setIsSponsorModalOpen(true);
+  };
+
+  // Prompt 04.5: members see feedback / certificate actions only when they checked in.
+  useEffect(() => {
+    if (!isMember || !isRecapModalOpen || !selectedEvent) {
+      setAttendance(null);
+      return;
+    }
+    let cancelled = false;
+    fetchEventAttendance(selectedEvent.id, chamberSlug)
+      .then((a) => !cancelled && setAttendance(a))
+      .catch(() => !cancelled && setAttendance(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [isMember, isRecapModalOpen, selectedEvent, chamberSlug]);
 
   const handleAddToCalendar = (event: EventItem) => {
     try {
@@ -396,7 +433,11 @@ export const EventsExplorerPage: React.FC<EventsExplorerPageProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2 w-full sm:w-auto">
-                    {timeframe === 'upcoming' ? (
+                    {timeframe === 'upcoming' && myRegistrationLabel(evt.myRegistration) ? (
+                      <span className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-semibold border border-emerald-200 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-900 dark:text-emerald-300 text-center">
+                        {myRegistrationLabel(evt.myRegistration)}
+                      </span>
+                    ) : timeframe === 'upcoming' ? (
                       <button
                         type="button"
                         disabled={evt.isSoldOut}
@@ -435,6 +476,7 @@ export const EventsExplorerPage: React.FC<EventsExplorerPageProps> = ({
                   onRegister={handleRegisterClick}
                   onViewRecap={handleViewRecapClick}
                   onAddToCalendar={handleAddToCalendar}
+                  onSponsor={isMember ? handleSponsorClick : undefined}
                 />
               ))}
             </div>
@@ -482,7 +524,7 @@ export const EventsExplorerPage: React.FC<EventsExplorerPageProps> = ({
         />
       )}
 
-      {/* Past Event Recap Modal */}
+{/* Past Event Recap Modal */}
       {isRecapModalOpen && selectedEvent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="relative w-full max-w-lg bg-card rounded-2xl border border-border shadow-2xl p-6">
@@ -513,7 +555,29 @@ export const EventsExplorerPage: React.FC<EventsExplorerPageProps> = ({
               </p>
             </div>
 
-            <div className="flex justify-end">
+            <div className="mb-4">
+              <EventSponsorsSection eventId={selectedEvent.id} chamberSlug={chamberSlug} />
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-2">
+              {attendance?.checkedIn && !attendance.feedbackSubmitted && (
+                <button
+                  type="button"
+                  onClick={() => setIsFeedbackModalOpen(true)}
+                  className="px-4 py-2 rounded-xl border border-border text-xs font-semibold cursor-pointer hover:bg-muted"
+                >
+                  Leave Feedback
+                </button>
+              )}
+              {attendance?.checkedIn && (
+                <button
+                  type="button"
+                  onClick={() => setIsCertificateOpen(true)}
+                  className="px-4 py-2 rounded-xl border border-border text-xs font-semibold cursor-pointer hover:bg-muted"
+                >
+                  Download Certificate
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setIsRecapModalOpen(false)}
@@ -524,6 +588,29 @@ export const EventsExplorerPage: React.FC<EventsExplorerPageProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Sponsorship booking (Prompt 04.4) */}
+      {isSponsorModalOpen && selectedEvent && (
+        <EventSponsorshipModal event={selectedEvent} chamberSlug={chamberSlug} onClose={() => setIsSponsorModalOpen(false)} />
+      )}
+
+      {/* Post-event feedback & certificate (Prompt 04.5) */}
+      {isFeedbackModalOpen && selectedEvent && attendance && (
+        <EventFeedbackModal
+          event={selectedEvent}
+          chamberSlug={chamberSlug}
+          rewardPoints={attendance.feedbackRewardPoints}
+          onClose={() => setIsFeedbackModalOpen(false)}
+          onSubmitted={() => setAttendance({ ...attendance, feedbackSubmitted: true })}
+          onOpenCertificate={() => {
+            setIsFeedbackModalOpen(false);
+            setIsCertificateOpen(true);
+          }}
+        />
+      )}
+      {isCertificateOpen && selectedEvent && (
+        <CertificateModal event={selectedEvent} chamberSlug={chamberSlug} onClose={() => setIsCertificateOpen(false)} />
       )}
     </div>
   );

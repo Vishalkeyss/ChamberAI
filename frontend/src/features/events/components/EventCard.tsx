@@ -9,11 +9,13 @@ import {
   ArrowRight,
   CalendarPlus,
   Share2,
+  Award,
+  CheckCircle2,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import type { EventItem } from '../services/events.api';
+import { myRegistrationLabel, type EventItem } from '../services/events.api';
 
 interface EventCardProps {
   event: EventItem;
@@ -22,6 +24,8 @@ interface EventCardProps {
   onRegister?: (event: EventItem) => void;
   onViewRecap?: (event: EventItem) => void;
   onAddToCalendar?: (event: EventItem) => void;
+  /** Members: open the sponsorship packages (Prompt 04.4). */
+  onSponsor?: (event: EventItem) => void;
 }
 
 const CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -61,6 +65,7 @@ export const EventCard: React.FC<EventCardProps> = ({
   onRegister,
   onViewRecap,
   onAddToCalendar,
+  onSponsor,
 }) => {
   const {
     title,
@@ -84,6 +89,7 @@ export const EventCard: React.FC<EventCardProps> = ({
   } = event;
 
   const { dateBadge, timeString } = formatEventDateTime(eventDate, eventEndDate);
+  const registeredLabel = myRegistrationLabel(event.myRegistration);
   const catStyle = CATEGORY_COLORS[(category || '').toLowerCase()] || {
     bg: 'bg-gray-100 dark:bg-muted',
     text: 'text-gray-700 dark:text-gray-300',
@@ -247,7 +253,21 @@ export const EventCard: React.FC<EventCardProps> = ({
         <div className="flex items-center gap-2 pt-1">
           {timeframe === 'upcoming' ? (
             <>
-              {/* Full events remain registrable as waitlist (Prompt 04.3 §7.2) */}
+              {/* Already registered / waitlisted: no second registration (server would return 409). */}
+              {registeredLabel ? (
+                <div
+                  className={cn(
+                    'flex-1 text-xs font-semibold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 border',
+                    event.myRegistration?.status === 'waitlisted'
+                      ? 'bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-900 dark:text-amber-300'
+                      : 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-900 dark:text-emerald-300'
+                  )}
+                >
+                  <CheckCircle2 size={13} />
+                  <span>{registeredLabel}</span>
+                </div>
+              ) : (
+              /* Full events remain registrable as waitlist (Prompt 04.3 §7.2) */
               <button
                 type="button"
                 onClick={() => onRegister && onRegister(event)}
@@ -261,6 +281,7 @@ export const EventCard: React.FC<EventCardProps> = ({
                 <span>{isSoldOut ? 'Join Waitlist' : 'Register Now'}</span>
                 <ArrowRight size={13} />
               </button>
+              )}
 
               <button
                 type="button"
@@ -271,6 +292,18 @@ export const EventCard: React.FC<EventCardProps> = ({
               >
                 <CalendarPlus size={15} />
               </button>
+
+              {isMember && onSponsor && (
+                <button
+                  type="button"
+                  onClick={() => onSponsor(event)}
+                  className="w-10 h-10 rounded-xl border border-gray-200 dark:border-border hover:bg-gray-50 dark:hover:bg-muted flex items-center justify-center text-gray-600 dark:text-gray-300 transition cursor-pointer shrink-0"
+                  title="Sponsor this event"
+                  aria-label="Sponsor this event"
+                >
+                  <Award size={15} />
+                </button>
+              )}
             </>
           ) : (
             <button

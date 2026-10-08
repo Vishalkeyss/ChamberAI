@@ -19,6 +19,9 @@ export const eventSponsorshipTiers = sqliteTable('event_sponsorship_tiers', {
   tierName: text('tier_name').notNull(),
   amount: real('amount').notNull().default(0.0),
   benefits: text('benefits'),
+  /** NULL = unlimited (migration 0016, Prompt 04.4 §6.1). */
+  maxSponsors: integer('max_sponsors'),
+  sponsorsCount: integer('sponsors_count').notNull().default(0),
   sortOrder: integer('sort_order').notNull().default(0),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 });

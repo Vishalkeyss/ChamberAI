@@ -9,9 +9,10 @@ import { EventsRepository } from '../repositories/events.repository';
 
 export const memberEventsRouter = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
-// All routes require authentication
+// All routes in this router require authentication. Scoped to this router's own paths so the
+// public GET /events/:id/sponsorship-tiers (Prompt 04.4 §9.1) is not caught by a wildcard.
 memberEventsRouter.use('/events', requireAuth);
-memberEventsRouter.use('/events/*', requireAuth);
+memberEventsRouter.use('/events/filters', requireAuth);
 
 const allowedRoles = ['member', 'full_admin', 'billing_admin', 'chapter_admin', 'group_admin', 'super_admin'];
 
@@ -69,7 +70,8 @@ memberEventsRouter.get('/events', requireRole(allowedRoles), async (c) => {
     chamberId,
     parsed.data,
     viewerRole,
-    scopedChapterId
+    scopedChapterId,
+    user.id
   );
 
   return c.json(

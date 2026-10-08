@@ -13,8 +13,9 @@ import {
 
 export const adminEventsTabsRouter = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
-// All admin events endpoints strictly require authentication and admin roles
-const adminRoles = ['full_admin', 'chapter_admin', 'group_admin', 'super_admin'];
+// All admin events endpoints strictly require authentication and admin roles.
+// billing_admin passes this gate for sponsorships (04.4); every handler re-checks scope (deny by default).
+const adminRoles = ['full_admin', 'billing_admin', 'chapter_admin', 'group_admin', 'super_admin'];
 adminEventsTabsRouter.use('/admin/events/*', requireAuth, requireRole(adminRoles));
 adminEventsTabsRouter.use('/admin/events', requireAuth, requireRole(adminRoles));
 
@@ -230,26 +231,4 @@ adminEventsTabsRouter.get('/admin/events/:id/feedback', async (c) => {
   return c.json(successResponse(feedback, { requestId }));
 });
 
-/**
- * Tab 6: GET /api/v1/admin/events/:id/sponsors
- */
-adminEventsTabsRouter.get('/admin/events/:id/sponsors', async (c) => {
-  const chamberId = c.get('chamberId');
-  const eventId = c.req.param('id');
-  const requestId = c.get('requestId');
-
-  if (!chamberId) {
-    throw new AppError(ErrorCodes.CHAMBER_NOT_FOUND, 'Chamber context required', 400);
-  }
-
-  const { userRole, userScopeId } = getAdminScope(c);
-  const sponsors = await EventRegistrationsRepository.getSponsors(
-    c.env.DB,
-    chamberId,
-    eventId,
-    userRole,
-    userScopeId
-  );
-
-  return c.json(successResponse(sponsors, { requestId }));
-});
+// Tab 6 (sponsors) moved to sponsorships.routes.ts (Prompt 04.4).

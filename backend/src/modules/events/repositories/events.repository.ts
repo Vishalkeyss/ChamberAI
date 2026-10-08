@@ -1,12 +1,13 @@
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, sql, desc, asc, like, or, inArray } from 'drizzle-orm';
-import { events, chapters, eventTicketTypes } from '../../../db/schema';
+import { events, chapters, eventTicketTypes, eventRegistrations } from '../../../db/schema';
 import type { EventsQueryParams } from '../validation/events.validation';
 import { POINT_REDEMPTION_VALUE } from '../services/event-registration.service';
 import {
   type EventListItem,
   type EventsListResponse,
   type EventTicketTypeItem,
+  type MyEventRegistration,
   getEventCapacityStatus,
 } from '../types/events.types';
 
@@ -23,7 +24,9 @@ export class EventsRepository {
     chamberId: string,
     params: EventsQueryParams,
     viewerRole: 'guest' | 'member' | 'chapter_admin' | 'full_admin' = 'guest',
-    userScopeChapterId?: string | null
+    userScopeChapterId?: string | null,
+    /** When set, each event carries this user's own registration (myRegistration). */
+    viewerUserId?: string | null
   ): Promise<EventsListResponse> {
     const db = drizzle(d1);
     const {
@@ -193,6 +196,35 @@ export class EventsRepository {
       ticketsByEvent.set(t.eventId, list);
     }
 
+    // The viewer's own registrations for the listed events (tenant + user scoped).
+    const myRegByEvent = new Map<string, MyEventRegistration>();
+    if (viewerUserId && eventIds.length) {
+      const regs = await db
+        .select({
+          eventId: eventRegistrations.eventId,
+          isWaitlisted: eventRegistrations.isWaitlisted,
+          waitlistPosition: eventRegistrations.waitlistPosition,
+          paymentStatus: eventRegistrations.paymentStatus,
+          checkInStatus: eventRegistrations.checkInStatus,
+        })
+        .from(eventRegistrations)
+        .where(
+          and(
+            eq(eventRegistrations.chamberId, chamberId),
+            eq(eventRegistrations.userId, viewerUserId),
+            inArray(eventRegistrations.eventId, eventIds)
+          )
+        );
+      for (const r of regs) {
+        myRegByEvent.set(r.eventId, {
+          status: r.isWaitlisted ? 'waitlisted' : 'confirmed',
+          waitlistPosition: r.isWaitlisted ? r.waitlistPosition : null,
+          paymentStatus: r.paymentStatus,
+          checkedIn: r.checkInStatus === 'checked_in',
+        });
+      }
+    }
+
     const data: EventListItem[] = rows.map(({ event: e, chapterName }) => {
       const isVirtualResolved =
         (e.venue && e.venue.toLowerCase().includes('virtual')) ||
@@ -239,6 +271,7 @@ export class EventsRepository {
         spotsRemaining: capacity.spotsRemaining,
         allowNonMemberRegistration: e.allowNonMemberRegistration,
         ticketTypes: ticketsByEvent.get(e.id) || [],
+        ...(viewerUserId ? { myRegistration: myRegByEvent.get(e.id) || null } : {}),
       };
     });
 

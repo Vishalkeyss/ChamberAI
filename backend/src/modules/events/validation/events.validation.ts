@@ -134,6 +134,8 @@ export const adminSponsorshipTierSchema = z.object({
   tierName: z.string().trim().min(1).max(100),
   amount: z.coerce.number().positive().max(1_000_000),
   benefits: z.array(z.string().trim().min(1).max(200)).max(20).default([]),
+  /** null = unlimited (Prompt 04.4 §6.1) */
+  maxSponsors: z.coerce.number().int().positive().max(1000).nullable().optional().default(null),
 });
 
 export const adminPromoCodeSchema = z.object({
@@ -210,3 +212,52 @@ export type RecurrenceInput = z.infer<typeof recurrenceSchema>;
 export type AdminTicketTypeInput = z.infer<typeof adminTicketTypeSchema>;
 export type AdminSponsorshipTierInput = z.infer<typeof adminSponsorshipTierSchema>;
 export type AdminPromoCodeInput = z.infer<typeof adminPromoCodeSchema>;
+
+// ---------------------------------------------------------------------------
+// Prompt 04.4 — Sponsorships
+// ---------------------------------------------------------------------------
+
+/** §10 */
+export const bookSponsorshipSchema = z.object({
+  tierId: z.string().min(1),
+  businessId: z.string().min(1),
+  paymentMethod: z.enum(['card', 'invoice']).default('card'),
+  paymentMethodId: z.string().optional(),
+});
+
+/** DB statuses (OD-033): paid = confirmed, pending = awaiting payment, overdue. */
+export const SPONSOR_STATUSES = ['paid', 'pending', 'overdue'] as const;
+
+/** Admin offline booking: a member business, or an external sponsor by name. */
+export const adminRecordSponsorSchema = z
+  .object({
+    tierId: z.string().min(1),
+    businessId: z.string().min(1).optional(),
+    sponsorName: z.string().trim().min(1).max(200).optional(),
+    amount: z.coerce.number().nonnegative().max(1_000_000).optional(),
+    status: z.enum(SPONSOR_STATUSES).default('pending'),
+    paymentDate: z.string().date().optional(),
+  })
+  .refine((v) => v.businessId || v.sponsorName, { message: 'Choose a member business or enter a sponsor name' });
+
+export const adminUpdateSponsorSchema = z.object({
+  status: z.enum(SPONSOR_STATUSES),
+  paymentDate: z.string().date().optional(),
+});
+
+export type BookSponsorshipInput = z.infer<typeof bookSponsorshipSchema>;
+export type AdminRecordSponsorInput = z.infer<typeof adminRecordSponsorSchema>;
+export type AdminUpdateSponsorInput = z.infer<typeof adminUpdateSponsorSchema>;
+
+// ---------------------------------------------------------------------------
+// Prompt 04.5 — Feedback (OD-035: canonical DB has would_attend_again instead of nps_score)
+// ---------------------------------------------------------------------------
+
+export const submitFeedbackSchema = z.object({
+  starRating: z.number().int().min(1).max(5),
+  wouldAttendAgain: z.boolean().default(true),
+  likedMost: z.string().trim().max(1000).optional(),
+  suggestions: z.string().trim().max(1000).optional(),
+});
+
+export type SubmitFeedbackInput = z.infer<typeof submitFeedbackSchema>;

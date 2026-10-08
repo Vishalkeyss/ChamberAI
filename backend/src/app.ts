@@ -28,6 +28,8 @@ import { memberEventsRouter } from './modules/events/routes/member-events.routes
 import { eventRegistrationRouter } from './modules/events/routes/event-registration.routes';
 import { adminEventsRouter } from './modules/events/routes/admin-events.routes';
 import { adminEventsTabsRouter } from './modules/events/routes/admin-events-tabs.routes';
+import { sponsorshipsRouter } from './modules/events/routes/sponsorships.routes';
+import { eventFeedbackRouter } from './modules/events/routes/feedback.routes';
 import { runMigrations, getMigrationHistory } from './core/db/migrator';
 import { successResponse } from './core/shared/response';
 
@@ -72,6 +74,8 @@ export function createApp() {
   apiV1.route('/', eventRegistrationRouter);
   apiV1.route('/', adminEventsRouter);
   apiV1.route('/', adminEventsTabsRouter);
+  apiV1.route('/', sponsorshipsRouter);
+  apiV1.route('/', eventFeedbackRouter);
 
   // Public Asset Delivery (Streams images/files from Cloudflare R2 / Miniflare STORAGE)
   apiV1.get('/public/assets/*', async (c) => {

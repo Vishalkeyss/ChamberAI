@@ -231,4 +231,29 @@ describe('Prompt 04.3: Event Registration, Promo Codes & Checkout', () => {
       [['tkt_paylater', 10], ['tkt_online', 5]]
     );
   });
+
+  it('14. Member events list shows only the viewer own registration status', async () => {
+    assert.equal((await post('/api/v1/events/evt_free/register', {}, 'sess_m1')).status, 201);
+    await post('/api/v1/events/evt_tiny/register', {}, 'sess_m2');
+    assert.equal((await post('/api/v1/events/evt_tiny/register', {}, 'sess_m1')).status, 201); // full → waitlist
+
+    const list = async (token: string) => {
+      const res = await app.request('/api/v1/events?timeframe=upcoming&limit=50', { headers: { Host: HOST, Authorization: `Bearer ${token}` } }, env);
+      assert.equal(res.status, 200);
+      const json = (await res.json()) as any;
+      return new Map<string, any>(json.data.map((e: any) => [e.id, e.myRegistration]));
+    };
+    const m1 = await list('sess_m1');
+    assert.equal(m1.get('evt_free')?.status, 'confirmed');
+    assert.equal(m1.get('evt_tiny')?.status, 'waitlisted');
+    assert.equal(m1.get('evt_tiny')?.waitlistPosition, 1);
+    assert.equal(m1.get('evt_gala'), null);
+
+    const m2 = await list('sess_m2');
+    assert.equal(m2.get('evt_free'), null);
+    assert.equal(m2.get('evt_tiny')?.status, 'confirmed');
+
+    const pub = (await (await app.request('/api/v1/public/events?timeframe=upcoming', { headers: { Host: HOST } }, env)).json()) as any;
+    assert.ok(pub.data.every((e: any) => !('myRegistration' in e)));
+  });
 });

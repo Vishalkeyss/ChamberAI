@@ -29,6 +29,23 @@ export interface EventItem {
   spotsRemaining: number | null;
   allowNonMemberRegistration: number;
   ticketTypes: EventTicketType[];
+  /** Signed-in member's own registration (member list only); null = not registered. */
+  myRegistration?: MyEventRegistration | null;
+}
+
+export interface MyEventRegistration {
+  status: 'confirmed' | 'waitlisted';
+  waitlistPosition: number | null;
+  paymentStatus: string | null;
+  checkedIn: boolean;
+}
+
+/** Label for an event the member is already registered for, or null when they can register. */
+export function myRegistrationLabel(reg: MyEventRegistration | null | undefined): string | null {
+  if (!reg) return null;
+  if (reg.status === 'waitlisted') return reg.waitlistPosition ? `On Waitlist #${reg.waitlistPosition}` : 'On Waitlist';
+  if (reg.paymentStatus === 'pay_later' || reg.paymentStatus === 'unpaid') return 'Registered · Payment due';
+  return 'Registered';
 }
 
 /** Prompt 04.3: ticket tier returned with each event */
@@ -333,3 +350,117 @@ export async function registerForEvent(
   return json.data;
 }
 
+
+// ---------------------------------------------------------------------------
+// Prompt 04.4 — Sponsorships
+// ---------------------------------------------------------------------------
+
+export interface SponsorshipTier {
+  id: string;
+  tierName: string;
+  amount: number;
+  benefits: string[];
+  maxSponsors: number | null;
+  sponsorsCount: number;
+  spotsRemaining: number | null;
+  isSoldOut: boolean;
+  sortOrder: number;
+}
+
+export interface ConfirmedSponsor {
+  businessName: string;
+  logoUrl: string | null;
+  tierId: string | null;
+  tierName: string | null;
+  tierSortOrder: number | null;
+  website: string | null;
+}
+
+export interface SponsorshipTiersResponse {
+  currency: string | null;
+  isPast: boolean;
+  tiers: SponsorshipTier[];
+  confirmedSponsors: ConfirmedSponsor[];
+}
+
+export interface BookSponsorshipResult {
+  sponsorId: string;
+  /** 'paid' = confirmed, 'pending' = invoice awaiting payment */
+  status: 'paid' | 'pending';
+  invoiceId: string | null;
+  amount: number;
+  currency: string | null;
+}
+
+async function readJson(res: Response, fallback: string) {
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error?.message || json.message || `${fallback} (${res.status})`);
+  return json.data;
+}
+
+/** GET /api/v1/events/:id/sponsorship-tiers (public, §9.1) */
+export async function fetchSponsorshipTiers(eventId: string, chamberSlug?: string): Promise<SponsorshipTiersResponse> {
+  const res = await fetch(`${API_BASE}/api/v1/events/${eventId}/sponsorship-tiers`, {
+    headers: getAuthHeaders(chamberSlug),
+  });
+  return readJson(res, 'Failed to load sponsorship packages');
+}
+
+/** POST /api/v1/events/:id/sponsor (members, §9.2) */
+export async function bookSponsorship(
+  eventId: string,
+  input: { tierId: string; businessId: string; paymentMethod: 'card' | 'invoice'; paymentMethodId?: string },
+  chamberSlug?: string
+): Promise<BookSponsorshipResult> {
+  const res = await fetch(`${API_BASE}/api/v1/events/${eventId}/sponsor`, {
+    method: 'POST',
+    headers: getAuthHeaders(chamberSlug),
+    body: JSON.stringify(input),
+  });
+  return readJson(res, 'Failed to book sponsorship');
+}
+
+// ---------------------------------------------------------------------------
+// Prompt 04.5 — Feedback & certificates
+// ---------------------------------------------------------------------------
+
+export interface EventAttendance {
+  checkedIn: boolean;
+  feedbackSubmitted: boolean;
+  feedbackRewardPoints: number;
+}
+
+export interface SubmitFeedbackInput {
+  starRating: number;
+  wouldAttendAgain: boolean;
+  likedMost?: string;
+  suggestions?: string;
+}
+
+export async function fetchEventAttendance(eventId: string, chamberSlug?: string): Promise<EventAttendance> {
+  const res = await fetch(`${API_BASE}/api/v1/events/${eventId}/attendance`, { headers: getAuthHeaders(chamberSlug) });
+  return readJson(res, 'Failed to load attendance');
+}
+
+export async function submitEventFeedback(
+  eventId: string,
+  input: SubmitFeedbackInput,
+  chamberSlug?: string
+): Promise<{ feedbackId: string; pointsAwarded: number; message: string }> {
+  const res = await fetch(`${API_BASE}/api/v1/events/${eventId}/feedback`, {
+    method: 'POST',
+    headers: getAuthHeaders(chamberSlug),
+    body: JSON.stringify(input),
+  });
+  return readJson(res, 'Failed to submit feedback');
+}
+
+/** GET /api/v1/events/:id/certificate — printable certificate HTML (OD-039 b). */
+export async function fetchEventCertificate(eventId: string, chamberSlug?: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/v1/events/${eventId}/certificate`, { headers: getAuthHeaders(chamberSlug) });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    throw new Error(json.error?.message || json.message || `Failed to load certificate (${res.status})`);
+  }
+  return res.text();
+}

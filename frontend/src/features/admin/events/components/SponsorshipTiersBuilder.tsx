@@ -54,6 +54,20 @@ export const SponsorshipTiersBuilder: React.FC<SponsorshipTiersBuilderProps> = (
                   className={`${inputCls} w-28`}
                 />
               </div>
+              <input
+                aria-label="Max sponsors"
+                type="number"
+                min={Math.max(1, sponsors)}
+                step="1"
+                value={t.maxSponsors ?? ''}
+                disabled={disabled}
+                onChange={(e) =>
+                  patch(i, { maxSponsors: e.target.value === '' ? null : Math.max(1, Math.floor(Number(e.target.value)) || 1) })
+                }
+                placeholder="Max spots"
+                title="Maximum sponsors for this tier (empty = unlimited)"
+                className={`${inputCls} w-24`}
+              />
               <button
                 type="button"
                 aria-label="Remove tier"
@@ -87,7 +101,7 @@ export const SponsorshipTiersBuilder: React.FC<SponsorshipTiersBuilderProps> = (
       <button
         type="button"
         disabled={disabled}
-        onClick={() => onChange([...value, { tierName: '', amount: 0, benefits: [] }])}
+        onClick={() => onChange([...value, { tierName: '', amount: 0, benefits: [], maxSponsors: null }])}
         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-muted cursor-pointer disabled:opacity-50"
       >
         <Plus size={13} /> Add Tier

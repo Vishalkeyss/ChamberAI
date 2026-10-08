@@ -279,6 +279,8 @@ export class EventCreationService {
       tierName: t.tierName,
       amount: t.amount,
       benefits: JSON.stringify(t.benefits),
+      maxSponsors: t.maxSponsors ?? null,
+      sponsorsCount: 0,
       sortOrder,
     };
   }
@@ -364,6 +366,7 @@ export class EventCreationService {
         tierName: t.tierName,
         amount: t.amount,
         benefits: parseBenefits(t.benefits),
+        maxSponsors: t.maxSponsors,
         sponsorCount: sponsorCounts.get(t.id) || 0,
       })),
       promoCodes: promos.map((p) => ({
@@ -550,10 +553,24 @@ export class EventCreationService {
       const match = this.matchExisting(target, isEdited, t.id, existing, originalName, (r) => r.tierName.toLowerCase());
       if (match) {
         kept.add(match.id);
+        const held = sponsorCounts.get(match.id) || 0;
+        if (t.maxSponsors != null && t.maxSponsors < held) {
+          throw new AppError(
+            ErrorCodes.CONFLICT,
+            `Sponsorship tier "${t.tierName}" already has ${held} sponsors; max sponsors cannot be lower`,
+            409
+          );
+        }
         out.push(
           db
             .update(eventSponsorshipTiers)
-            .set({ tierName: t.tierName, amount: t.amount, benefits: JSON.stringify(t.benefits), sortOrder: i })
+            .set({
+              tierName: t.tierName,
+              amount: t.amount,
+              benefits: JSON.stringify(t.benefits),
+              maxSponsors: t.maxSponsors ?? null,
+              sortOrder: i,
+            })
             .where(and(eq(eventSponsorshipTiers.chamberId, chamberId), eq(eventSponsorshipTiers.id, match.id)))
         );
       } else {

@@ -12,6 +12,7 @@ import {
 } from '../services/events.api';
 import { PromoCodeInput } from './PromoCodeInput';
 import { TicketSummaryCard } from './TicketSummaryCard';
+import { EventSponsorsSection } from './EventSponsorsSection';
 
 interface EventRegistrationModalProps {
   event: EventItem;
@@ -393,6 +394,11 @@ export const EventRegistrationModal: React.FC<EventRegistrationModalProps> = ({
             </div>
           </form>
         )}
+
+        {/* Prompt 04.4 §5.2: confirmed sponsors below the event details */}
+        <div className="mt-5">
+          <EventSponsorsSection eventId={event.id} chamberSlug={chamberSlug} />
+        </div>
       </div>
     </div>
   );

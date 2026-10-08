@@ -140,14 +140,40 @@ export interface EventFeedbackItem {
   createdAt: string;
 }
 
+export type SponsorStatus = 'paid' | 'pending' | 'overdue';
+
 export interface EventSponsorItem {
   id: string;
   sponsorName: string;
+  businessId: string | null;
+  logoUrl: string | null;
+  website: string | null;
   tierId: string | null;
-  tierName?: string | null;
+  tierName: string | null;
   amount: number;
-  status: string;
+  status: SponsorStatus;
   paymentDate: string | null;
+  createdAt: string;
+}
+
+export interface AdminSponsorshipTier {
+  id: string;
+  tierName: string;
+  amount: number;
+  benefits: string[];
+  maxSponsors: number | null;
+  sponsorsCount: number;
+  spotsRemaining: number | null;
+  isSoldOut: boolean;
+}
+
+/** Prompt 04.4 — Tab 6 data: tiers, sponsors, revenue summary and what the caller may do. */
+export interface AdminSponsorsOverview {
+  currency: string | null;
+  permissions: { canRecord: boolean; canUpdateStatus: boolean; canRemove: boolean };
+  summary: { totalCommitted: number; totalPaid: number; totalOutstanding: number; sponsorCount: number };
+  tiers: AdminSponsorshipTier[];
+  sponsors: EventSponsorItem[];
 }
 
 /**
@@ -296,20 +322,36 @@ export async function fetchAdminEventFeedback(
 }
 
 /**
- * Fetch event sponsors
+ * Fetch event sponsors (Prompt 04.4 Tab 6)
  */
-export async function fetchAdminEventSponsors(
+export function fetchAdminEventSponsors(eventId: string, chamberSlug?: string): Promise<AdminSponsorsOverview> {
+  return adminRequest(`/api/v1/admin/events/${eventId}/sponsors`, {}, chamberSlug);
+}
+
+/** Offline booking: an external sponsor by name (or a member business id). */
+export function recordAdminSponsor(
   eventId: string,
+  input: { tierId: string; sponsorName?: string; businessId?: string; amount?: number; status: SponsorStatus; paymentDate?: string },
   chamberSlug?: string
-): Promise<EventSponsorItem[]> {
-  const url = `${API_BASE}/api/v1/admin/events/${eventId}/sponsors`;
-  const headers = getAuthHeaders(chamberSlug);
-  const res = await fetch(url, { headers });
-  if (!res.ok) {
-    return [];
-  }
-  const json = await res.json();
-  return json.data || [];
+): Promise<{ sponsorId: string }> {
+  return adminRequest(`/api/v1/admin/events/${eventId}/sponsors`, { method: 'POST', body: JSON.stringify(input) }, chamberSlug);
+}
+
+export function updateAdminSponsorStatus(
+  eventId: string,
+  sponsorId: string,
+  input: { status: SponsorStatus; paymentDate?: string },
+  chamberSlug?: string
+): Promise<{ sponsorId: string }> {
+  return adminRequest(
+    `/api/v1/admin/events/${eventId}/sponsors/${sponsorId}`,
+    { method: 'PATCH', body: JSON.stringify(input) },
+    chamberSlug
+  );
+}
+
+export function removeAdminSponsor(eventId: string, sponsorId: string, chamberSlug?: string): Promise<{ removed: boolean }> {
+  return adminRequest(`/api/v1/admin/events/${eventId}/sponsors/${sponsorId}`, { method: 'DELETE' }, chamberSlug);
 }
 
 // ---------------------------------------------------------------------------
@@ -332,6 +374,8 @@ export interface EventSponsorshipTierForm {
   tierName: string;
   amount: number;
   benefits: string[];
+  /** null = unlimited (Prompt 04.4) */
+  maxSponsors: number | null;
   /** read-only, returned when editing */
   sponsorCount?: number;
 }

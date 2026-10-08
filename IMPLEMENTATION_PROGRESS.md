@@ -3,7 +3,7 @@
 > **Master Plan Reference:** [`MASTER_IMPLEMENTATION_PLAYBOOK.md`](file:///e:/Chamber/MASTER_IMPLEMENTATION_PLAYBOOK.md)  
 > **Total Phases:** 15 (Phases 00 – 14)  
 > **Total Prompts:** 72  
-> **Status:** Phase 04 in progress (04.4, 04.5 pending) · Last updated 2026-10-08
+> **Status:** Phase 04 completed · Next: Phase 05 · Last updated 2026-10-08
 
 ---
 
@@ -11,7 +11,7 @@
 
 | Total Prompts | Completed | In Progress | Pending | Progress (%) |
 |:---:|:---:|:---:|:---:|:---:|
-| **72** | **18** | **0** | **54** | **25.0%** |
+| **72** | **20** | **0** | **52** | **27.8%** |
 
 ---
 
@@ -23,7 +23,7 @@
 | **Phase 01** | Authentication, Sessions & User Security | 4 | ✅ Completed | 4 / 4 |
 | **Phase 02** | Membership Plans, Applications, Review & Billing | 5 | ✅ Completed | 5 / 5 |
 | **Phase 03** | Business Profiles & Member Directory | 2 | ✅ Completed (spec gaps open) | 2 / 2 |
-| **Phase 04** | Events, Ticketing, Sponsorships & Day-Of Check-In | 6 | 🔄 In Progress | 4 / 6 |
+| **Phase 04** | Events, Ticketing, Sponsorships & Day-Of Check-In | 6 | ✅ Completed (OD-001 payment pending) | 6 / 6 |
 | **Phase 05** | Networking, 1:1 Meetings, Messaging & CRM | 6 | ⏳ Pending | 0 / 6 |
 | **Phase 06** | Community Chapters, Interest Groups & Polls | 4 | ⏳ Pending | 0 / 4 |
 | **Phase 07** | Content Publishing, Announcements, Blog, Media & Jobs | 6 | ⏳ Pending | 0 / 6 |
@@ -93,8 +93,14 @@
   - *Backend:* `events/services/event-registration.service.ts`, `events/routes/event-registration.routes.ts`, `billing/services/payment-gateway.service.ts`, `test/event-registration.test.ts`
   - *Frontend:* `events/components/EventRegistrationModal.tsx`, `PromoCodeInput.tsx`, `TicketSummaryCard.tsx`
   - *Status:* Atomic seat/ticket/promo/points claims, waitlist, pay-later invoices. Online card payment returns 503 until gateway (OD-001).
-- [ ] **Prompt 04.4**: Event Sponsorship Packages & Member Self-Service Booking `[⏳ PENDING]`
-- [ ] **Prompt 04.5**: Post-Event Member Feedback & Attendance Certificates Engine `[⏳ PENDING]`
+- [x] **Prompt 04.4**: Event Sponsorship Packages & Member Self-Service Booking `[✅ COMPLETED]`
+  - *Backend:* migration `0016_sponsorship_capacity_feedback_unique.sql`, `events/routes/sponsorships.routes.ts`, `events/services/sponsorships.service.ts`, `events/repositories/event-sponsors.repository.ts`, `test/sponsorships.test.ts`
+  - *Frontend:* `events/components/EventSponsorshipModal.tsx`, `EventSponsorsSection.tsx`, `admin/events/components/tabs/SponsorsTab.tsx`, `SponsorshipTiersBuilder.tsx` (max sponsors)
+  - *Status:* Atomic tier capacity, Net 30 sponsorship invoices, public wall (paid only), admin offline record / status / remove with chapter & billing scope. Card payment 503 until OD-001.
+- [x] **Prompt 04.5**: Post-Event Member Feedback & Attendance Certificates Engine `[✅ COMPLETED]`
+  - *Backend:* `events/routes/feedback.routes.ts`, `events/services/event-feedback.service.ts`, `events/services/certificate-generator.service.ts`, `events/repositories/event-feedback.repository.ts`, `test/feedback-certificate.test.ts`
+  - *Frontend:* `events/components/EventFeedbackModal.tsx`, `CertificateModal.tsx` (past-event recap)
+  - *Status:* Check-in required (403), one review per attendee (409), +25 points with ledger, printable HTML certificate (OD-039 b). NPS replaced by "would attend again" (OD-035).
 - [x] **Prompt 04.6**: Admin Event Creation Wizard, Recurrence Engine & Multi-Channel Syndication `[✅ COMPLETED]`
   - *Backend:* `events/routes/admin-events.routes.ts`, `events/services/event-creation.service.ts`, `events/services/recurrence.ts`, `events/repositories/events-admin.repository.ts`, `test/event-creation.test.ts`
   - *Frontend:* `admin/events/components/AdminEventWizardModal.tsx`, `RecurrenceConfigurator.tsx`, `TicketTiersBuilder.tsx`, `SponsorshipTiersBuilder.tsx`, `PromoCodesBuilder.tsx`

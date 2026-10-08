@@ -5,8 +5,6 @@ import {
   eventTicketTypes,
   eventRegistrations,
   eventFeedback,
-  eventSponsors,
-  eventSponsorshipTiers,
   users,
 } from '../../../db/schema';
 import type {
@@ -14,7 +12,6 @@ import type {
   AttendeeListItem,
   WaitlistListItem,
   EventFeedbackItem,
-  EventSponsorItem,
 } from '../types/events.types';
 import type { AttendeeQueryParams } from '../validation/events.validation';
 import { AppError, ErrorCodes } from '../../../core/shared/errors';
@@ -533,43 +530,4 @@ export class EventRegistrationsRepository {
       createdAt: f.createdAt,
     }));
   }
-
-  static async getSponsors(
-    d1: D1Database,
-    chamberId: string,
-    eventId: string,
-    userRole: string,
-    userScopeId: string | null
-  ): Promise<EventSponsorItem[]> {
-    const db = drizzle(d1);
-    await this.getScopedEvent(d1, chamberId, eventId, userRole, userScopeId);
-
-    const list = await db
-      .select({
-        id: eventSponsors.id,
-        sponsorName: eventSponsors.sponsorName,
-        tierId: eventSponsors.tierId,
-        tierName: eventSponsorshipTiers.tierName,
-        amount: eventSponsors.amount,
-        status: eventSponsors.status,
-        paymentDate: eventSponsors.paymentDate,
-      })
-      .from(eventSponsors)
-      .leftJoin(eventSponsorshipTiers, eq(eventSponsors.tierId, eventSponsorshipTiers.id))
-      .where(and(eq(eventSponsors.chamberId, chamberId), eq(eventSponsors.eventId, eventId)))
-      .orderBy(desc(eventSponsors.amount))
-      .all();
-
-    return list.map((s) => ({
-      id: s.id,
-      sponsorName: s.sponsorName,
-      tierId: s.tierId,
-      tierName: s.tierName || 'Standard Sponsor',
-      amount: s.amount,
-      status: s.status || 'pending',
-      paymentDate: s.paymentDate,
-    }));
-  }
-
 }
-

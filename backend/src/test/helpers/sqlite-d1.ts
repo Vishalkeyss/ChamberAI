@@ -48,21 +48,29 @@ export function createMigratedD1() {
     return stmt;
   };
 
+  // D1 runs batches one at a time; serialize so concurrent test requests never nest transactions.
+  let batchQueue: Promise<unknown> = Promise.resolve();
+
   return {
     sqlite,
     exec: (sql: string) => sqlite.exec(sql),
     prepare: makeStatement,
-    async batch(statements: any[]) {
-      sqlite.exec('BEGIN');
-      try {
-        const results = [];
-        for (const s of statements) results.push(await s.all());
-        sqlite.exec('COMMIT');
-        return results;
-      } catch (err) {
-        sqlite.exec('ROLLBACK');
-        throw err;
-      }
+    batch(statements: any[]) {
+      const run = async () => {
+        sqlite.exec('BEGIN');
+        try {
+          const results = [];
+          for (const s of statements) results.push(await s.all());
+          sqlite.exec('COMMIT');
+          return results;
+        } catch (err) {
+          sqlite.exec('ROLLBACK');
+          throw err;
+        }
+      };
+      const result = batchQueue.then(run, run);
+      batchQueue = result.catch(() => undefined);
+      return result;
     },
   };
 }
