@@ -71,7 +71,7 @@ export class MemberOverviewService {
       status: (membershipRow?.status as string) || 'active',
       memberIdDisplay: (membershipRow?.member_id_display as string) || '',
       memberSince: memberSinceYear,
-      renewalDate: (membershipRow?.plan_end_date as string) || 'Dec 31, 2026',
+      renewalDate: (membershipRow?.plan_end_date as string) || null,
     };
 
     // 3. Referrals given (where user's business is from_business_id)

@@ -149,7 +149,7 @@ export const MemberMembershipPage: React.FC<MemberMembershipPageProps> = ({
   }, [currentPlan, plans]);
 
   const [membershipStatus, setMembershipStatus] = useState<string>('Active');
-  const [expiryDate, setExpiryDate] = useState<string>('04 Oct 2026');
+  const [expiryDate, setExpiryDate] = useState<string>('—');
   const [memberSince, setMemberSince] = useState<string>('2023');
   const [serverMemberId, setServerMemberId] = useState<string>('');
   const [daysLeft, setDaysLeft] = useState<number>(98);
@@ -178,11 +178,8 @@ export const MemberMembershipPage: React.FC<MemberMembershipPageProps> = ({
     .slice(0, 2)
     .map((w) => w[0].toUpperCase())
     .join('');
-  const memberId =
-    serverMemberId ||
-    (user as any)?.memberIdDisplay ||
-    (user as any)?.id ||
-    `${memberInitials || 'AM'}-2026-1598`;
+  // Only a real membership ID can be verified by the public QR endpoint; no fabricated fallback.
+  const memberId = serverMemberId || (user as any)?.memberIdDisplay || '';
 
   // QR Code base64 Data URL state for instant display and canvas embedding
   const [qrDataUrl, setQrDataUrl] = useState<string>('');

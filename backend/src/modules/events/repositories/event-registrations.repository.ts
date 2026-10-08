@@ -372,24 +372,35 @@ export class EventRegistrationsRepository {
       return { registrationId, status: 'confirmed', alreadyConfirmed: true };
     }
 
-    // 1. Promote registration
-    await db
-      .update(eventRegistrations)
-      .set({
-        isWaitlisted: 0,
-        waitlistPosition: null,
-      })
-      .where(eq(eventRegistrations.id, registrationId))
+    // 1. Claim the waitlist entry (conditional: two concurrent promotes cannot both win)
+    const claimed = await d1
+      .prepare(
+        `UPDATE event_registrations SET is_waitlisted = 0, waitlist_position = NULL
+         WHERE id = ? AND chamber_id = ? AND event_id = ? AND is_waitlisted = 1`
+      )
+      .bind(registrationId, chamberId, eventId)
       .run();
+    if (!claimed.meta?.changes) {
+      return { registrationId, status: 'confirmed', alreadyConfirmed: true };
+    }
 
-    // 2. Increment event registered_count
-    await db
-      .update(events)
-      .set({
-        registeredCount: sql`${events.registeredCount} + 1`,
-      })
-      .where(eq(events.id, eventId))
+    // 2. Claim a seat only if capacity allows (atomic check-and-increment)
+    const seat = await d1
+      .prepare(
+        `UPDATE events SET registered_count = registered_count + 1
+         WHERE id = ? AND chamber_id = ?
+           AND (max_capacity IS NULL OR max_capacity <= 0 OR registered_count < max_capacity)`
+      )
+      .bind(eventId, chamberId)
       .run();
+    if (!seat.meta?.changes) {
+      // Event is full: put the entry back on the waitlist at its original position.
+      await d1
+        .prepare('UPDATE event_registrations SET is_waitlisted = 1, waitlist_position = ? WHERE id = ? AND chamber_id = ?')
+        .bind(reg.waitlistPosition ?? null, registrationId, chamberId)
+        .run();
+      throw new AppError(ErrorCodes.CONFLICT, 'Event is at full capacity; cannot promote from waitlist', 409);
+    }
 
     // 3. Increment ticket type qtySold if bound to a ticket type
     if (reg.ticketTypeId) {
@@ -398,7 +409,7 @@ export class EventRegistrationsRepository {
         .set({
           qtySold: sql`${eventTicketTypes.qtySold} + 1`,
         })
-        .where(eq(eventTicketTypes.id, reg.ticketTypeId))
+        .where(and(eq(eventTicketTypes.id, reg.ticketTypeId), eq(eventTicketTypes.chamberId, chamberId)))
         .run();
     }
 

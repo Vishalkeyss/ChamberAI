@@ -340,6 +340,24 @@ function createMockDb() {
             }
             return { success: true, meta: { changes: 0 } };
           }
+          if (normalized.includes('UPDATE applications') && normalized.includes('converted_user_id IS NULL')) {
+            const [adminNotes, userId, updatedAt, chamberId, id] = boundParams;
+            const app = applications.get(id);
+            if (
+              app &&
+              app.chamber_id === chamberId &&
+              !app.converted_user_id &&
+              ['pending', 'changes_requested', 'approved'].includes(app.status)
+            ) {
+              app.status = 'approved';
+              app.admin_notes = adminNotes;
+              app.kanban_stage = 'approved';
+              app.converted_user_id = userId;
+              app.updated_at = updatedAt;
+              return { success: true, meta: { changes: 1 } };
+            }
+            return { success: true, meta: { changes: 0 } };
+          }
           if (normalized.includes('UPDATE applications SET converted_user_id = ?')) {
             const [userId, updatedAt, id] = boundParams;
             const app = applications.get(id);
@@ -707,7 +725,7 @@ describe('Prompt 02.2: Public Membership Applications Integration Tests', () => 
     }, env);
   });
 
-  it('9. PATCH /api/v1/admin/applications/:id/approve charges card on file and generates invoice', async () => {
+  it('9. PATCH /api/v1/admin/applications/:id/approve vaults card, issues unpaid invoice, and blocks re-approval', async () => {
     const app = createApp();
     const token = 'sess_admin_test_token';
 
@@ -752,27 +770,38 @@ describe('Prompt 02.2: Public Membership Applications Integration Tests', () => 
     const approveJson: any = await approveRes.json();
     assert.equal(approveJson.success, true);
     assert.equal(approveJson.data.status, 'approved');
-    assert.equal(approveJson.data.charge.charged, true);
-    assert.equal(approveJson.data.charge.amount, 500);
-    assert.equal(approveJson.data.charge.cardLastFour, '8888');
-    assert.ok(approveJson.data.charge.transactionId);
+    // No payment gateway is integrated: approval must never fake a charge.
+    assert.equal(approveJson.data.charge.charged, false);
+    assert.equal(approveJson.data.charge.amount, 0);
+    assert.equal(approveJson.data.charge.transactionId, null);
     assert.ok(approveJson.data.charge.invoiceId);
-    assert.match(approveJson.data.message, /8888 was charged \$500.00/i);
 
-    // Verify card was vaulted in payment_methods
+    // Verify card metadata was vaulted in payment_methods
     const vaulted = env.DB._paymentMethods.find((p: any) => p.last_four === '8888');
     assert.ok(vaulted);
     assert.equal(vaulted.brand, 'visa');
 
-    // Verify invoice was created with status = 'paid'
+    // Verify invoice was created as unpaid with no gateway transaction
     const invoice = env.DB._invoices.find((i: any) => i.id === approveJson.data.charge.invoiceId);
     assert.ok(invoice);
-    assert.equal(invoice.status, 'paid');
+    assert.equal(invoice.status, 'unpaid');
     assert.equal(invoice.amount, 500);
-    assert.ok(invoice.payment_gateway_txn_id);
+    assert.ok(!invoice.payment_gateway_txn_id);
+
+    // A second approval must be rejected and must not provision duplicates
+    const invoiceCount = env.DB._invoices.length;
+    const reapproveRes = await app.request(`/api/v1/admin/applications/${appId}/approve`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'x-chamber-id': 'ch_test_tenant',
+      },
+    }, env);
+    assert.equal(reapproveRes.status, 409);
+    assert.equal(env.DB._invoices.length, invoiceCount);
   });
 
-  it('10. Auto-Approve Mode: Automatically approves and charges card on submission', async () => {
+  it('10. Auto-Approve Mode: Automatically approves on submission without faking a charge', async () => {
     const app = createApp();
 
     // Set auto-approve setting in chamber
@@ -805,7 +834,8 @@ describe('Prompt 02.2: Public Membership Applications Integration Tests', () => 
     const json: any = await res.json();
     assert.equal(json.success, true);
     assert.equal(json.data.status, 'approved');
-    assert.match(json.data.message, /Card ending in 1234 charged \$500.00/i);
+    // Without a payment gateway, auto-approval must not claim a charge.
+    assert.doesNotMatch(json.data.message, /charged/i);
 
     // Reset back to manual review default
     env.DB._settings.set('ch_test_tenant', 0);

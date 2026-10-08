@@ -62,17 +62,22 @@ export const AddPaymentMethodModal: React.FC<AddPaymentMethodModalProps> = ({
       return;
     }
 
+    if (!/^\d{2}\/\d{2}$/.test(expiry)) {
+      toast.error('Please enter the expiration date as MM/YY');
+      return;
+    }
+
     const expParts = expiry.split('/');
-    const expMonth = parseInt(expParts[0] || '12', 10);
-    let expYear = parseInt(expParts[1] || '28', 10);
-    if (expYear < 100) expYear += 2000;
+    const expMonth = parseInt(expParts[0], 10);
+    const expYear = 2000 + parseInt(expParts[1], 10);
 
     if (isNaN(expMonth) || expMonth < 1 || expMonth > 12) {
       toast.error('Invalid expiration month');
       return;
     }
 
-    if (isNaN(expYear) || expYear < 2025 || expYear > 2045) {
+    const currentYear = new Date().getFullYear();
+    if (isNaN(expYear) || expYear < currentYear || expYear > currentYear + 20) {
       toast.error('Invalid expiration year');
       return;
     }

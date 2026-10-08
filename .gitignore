@@ -48,3 +48,5 @@ Thumbs.db
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+PENDING_BUGS.md
+.claude/

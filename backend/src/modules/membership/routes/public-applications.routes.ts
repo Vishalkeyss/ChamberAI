@@ -112,11 +112,16 @@ publicApplicationsRoutes.get('/public/members/verify/:memberId', async (c) => {
   if (!memberId) {
     throw new AppError(ErrorCodes.BAD_REQUEST, 'Member ID is required', 400);
   }
+  // Verification is tenant-scoped: a QR code only verifies within its own chamber.
+  const chamberId = c.get('chamberId');
+  if (!chamberId) {
+    throw new AppError(ErrorCodes.BAD_REQUEST, 'Chamber identification required', 400);
+  }
 
   const row = await c.env.DB
     .prepare(
       `SELECT cm.id AS membership_id, cm.member_id_display, cm.status, cm.plan_start_date, cm.plan_end_date, cm.created_at,
-              u.id AS user_id, u.name AS member_name, u.email AS member_email, u.avatar_url,
+              u.name AS member_name, u.avatar_url,
               bp.business_name,
               pc.name AS chamber_name, pc.subdomain AS chamber_slug,
               mp.name AS tier_name
@@ -126,13 +131,11 @@ publicApplicationsRoutes.get('/public/members/verify/:memberId', async (c) => {
        JOIN users u ON u.id = bm.user_id
        JOIN platform_chambers pc ON pc.id = cm.chamber_id
        LEFT JOIN membership_plans mp ON mp.id = cm.plan_id
-       WHERE cm.member_id_display = ?
-          OR LOWER(cm.member_id_display) = LOWER(?)
-          OR cm.id = ?
-          OR u.id = ?
+       WHERE cm.chamber_id = ?
+         AND (LOWER(cm.member_id_display) = LOWER(?) OR cm.id = ?)
        LIMIT 1`
     )
-    .bind(memberId, memberId, memberId, memberId)
+    .bind(chamberId, memberId, memberId)
     .first<any>();
 
   if (!row) {
@@ -141,14 +144,13 @@ publicApplicationsRoutes.get('/public/members/verify/:memberId', async (c) => {
 
   const memberSinceYear = row.created_at || row.plan_start_date
     ? new Date(row.created_at || row.plan_start_date).getFullYear().toString()
-    : '2026';
+    : null;
 
   const data = {
     verified: row.status === 'active',
     memberId: row.member_id_display || row.membership_id,
     membershipId: row.membership_id,
     memberName: row.member_name,
-    memberEmail: row.member_email,
     avatarUrl: row.avatar_url || null,
     businessName: row.business_name,
     chamberName: row.chamber_name,
@@ -156,7 +158,7 @@ publicApplicationsRoutes.get('/public/members/verify/:memberId', async (c) => {
     tierName: row.tier_name || 'Standard',
     status: row.status,
     memberSince: memberSinceYear,
-    validUntil: row.plan_end_date || 'Dec 31, 2026',
+    validUntil: row.plan_end_date || null,
   };
 
   const requestId = c.get('requestId');

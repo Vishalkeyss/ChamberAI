@@ -26,15 +26,14 @@ interface VerificationData {
   memberId: string;
   membershipId?: string;
   memberName: string;
-  memberEmail?: string;
   avatarUrl?: string | null;
   businessName: string;
   chamberName: string;
   chamberSlug?: string;
   tierName: string;
   status: string;
-  memberSince: string;
-  validUntil: string;
+  memberSince: string | null;
+  validUntil: string | null;
 }
 
 export const MemberVerificationPage: React.FC<MemberVerificationPageProps> = ({
@@ -260,7 +259,7 @@ export const MemberVerificationPage: React.FC<MemberVerificationPageProps> = ({
                     </span>
                     <span className="text-sm font-semibold text-emerald-400 mt-1 flex items-center gap-1.5">
                       <Calendar className="w-4 h-4 text-emerald-400 shrink-0" />
-                      Through {data.validUntil}
+                      Through {data.validUntil ?? '—'}
                     </span>
                   </div>
                 </div>

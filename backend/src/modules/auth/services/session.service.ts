@@ -1,5 +1,6 @@
 import type { AppContext } from '../../../core/context';
 import { generateSessionToken, generatePrefixedId } from '../../../core/shared/crypto';
+import { isLocalDevRequest } from '../../../core/shared/dev-guard';
 
 export type PlatformRole =
   | 'super_admin'
@@ -140,7 +141,7 @@ export class SessionService {
     }
 
     // Local development super admin fallback
-    if (token === 'dev_super_admin_token' && c.env.ENVIRONMENT !== 'production') {
+    if (token === 'dev_super_admin_token' && isLocalDevRequest(c)) {
       return {
         userId: 'usr_super_root',
         chamberId: 'plat_root',
@@ -158,7 +159,7 @@ export class SessionService {
     }
 
     // Local development member fallback
-    if (token === 'dev_member_token' && c.env.ENVIRONMENT !== 'production') {
+    if (token === 'dev_member_token' && isLocalDevRequest(c)) {
       return {
         userId: 'usr_member00000001',
         chamberId: 'cham_test0000000001',
@@ -176,7 +177,7 @@ export class SessionService {
     }
 
     // Local development full_admin fallback
-    if (token === 'dev_admin_token' && c.env.ENVIRONMENT !== 'production') {
+    if (token === 'dev_admin_token' && isLocalDevRequest(c)) {
       return {
         userId: 'usr_admin000000001',
         chamberId: 'cham_test0000000001',

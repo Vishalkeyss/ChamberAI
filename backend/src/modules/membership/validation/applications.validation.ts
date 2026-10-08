@@ -48,7 +48,7 @@ export const applicationPaymentMethodSchema = z.object({
   brand: z.string().max(30).default('card'),
   lastFour: z.string().regex(/^\d{4}$/, 'Last four digits must be 4 numbers'),
   expiryMonth: z.number().int().min(1).max(12),
-  expiryYear: z.number().int().min(2025).max(2099),
+  expiryYear: z.number().int().min(new Date().getFullYear()).max(2099),
   gatewayToken: z.string().max(255).optional(),
 });
 
@@ -59,7 +59,6 @@ export const submitApplicationSchema = z.object({
   businessName: z.string().min(2, 'Business name must be at least 2 characters').max(150).trim(),
   planId: z.string().min(1, 'Plan selection is required'),
   chapterId: z.string().optional().nullable(),
-  customTrackingCode: z.string().optional(),
   paymentMethod: applicationPaymentMethodSchema.optional().nullable(),
   businessDetails: z.object({
     dbaName: z.string().max(100).optional().nullable(),

@@ -263,7 +263,6 @@ export const ApplyPlanModal: React.FC<ApplyPlanModalProps> = ({
         lastFour: cardDigits.slice(-4),
         expiryMonth: mm,
         expiryYear: fullYear,
-        gatewayToken: `tok_preauth_${Math.random().toString(36).substring(2, 10)}`,
       };
     }
 

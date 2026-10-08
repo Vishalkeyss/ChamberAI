@@ -6,6 +6,7 @@ import React, {
   useCallback,
   useRef,
 } from 'react';
+import { queryClient } from '@/core/query/query-client';
 
 export type RoleIdentifier =
   | 'super_admin'
@@ -165,9 +166,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } else {
       localStorage.removeItem('auth_token');
+      localStorage.removeItem('session_token');
       localStorage.removeItem('auth_user');
       localStorage.removeItem('auth_roles');
       localStorage.removeItem('auth_chamber');
+      sessionStorage.removeItem('auth_token');
+      // Drop every cached server response so the next user never sees this user's data.
+      queryClient.clear();
     }
     setToken(newToken);
     setUser(newUser);
