@@ -9,6 +9,7 @@ import type {
   TeamRepresentative,
 } from '../types';
 import { AppError, ErrorCodes } from '../../../core/shared/errors';
+import { generatePrefixedId } from '../../../core/shared/crypto';
 
 export function getBusinessLogoStorageKey(chamberId: string, businessId: string, ext = 'png'): string {
   return `tenants/${chamberId}/businesses/${businessId}/logo_${Date.now()}.${ext}`;
@@ -20,10 +21,51 @@ export function getBusinessBannerStorageKey(chamberId: string, businessId: strin
 
 export function normalizeAssetUrl(url: string | null | undefined): string | null {
   if (!url) return null;
-  if (url.startsWith('https://r2.121meet.ai/')) {
-    return url.replace('https://r2.121meet.ai/', '/api/v1/public/assets/');
-  }
+  // Legacy rows may hold an absolute R2 URL; serve every stored tenant object through the
+  // relative assets route instead of a hardcoded host.
+  const legacy = url.match(/^https?:\/\/[^/]+\/(tenants\/.+)$/);
+  if (legacy) return `/api/v1/public/assets/${legacy[1]}`;
   return url;
+}
+
+// Image uploads: only raster formats, verified by magic bytes (never trust client MIME).
+export const MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024;
+
+export function detectImageType(bytes: ArrayBuffer | Uint8Array): { mime: string; ext: string } | null {
+  const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) {
+    return { mime: 'image/png', ext: 'png' };
+  }
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) {
+    return { mime: 'image/jpeg', ext: 'jpg' };
+  }
+  if (
+    b.length >= 12 &&
+    b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 &&
+    b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50
+  ) {
+    return { mime: 'image/webp', ext: 'webp' };
+  }
+  return null;
+}
+
+function validateImageUpload(fileBuffer: ArrayBuffer | Uint8Array, maxBytes: number): { mime: string; ext: string } {
+  const size = fileBuffer.byteLength;
+  if (!size) {
+    throw new AppError(ErrorCodes.BAD_REQUEST, 'Uploaded file is empty', 400);
+  }
+  if (size > maxBytes) {
+    throw new AppError(
+      ErrorCodes.BAD_REQUEST,
+      `File too large. Maximum size is ${Math.round(maxBytes / (1024 * 1024))}MB`,
+      400
+    );
+  }
+  const detected = detectImageType(fileBuffer);
+  if (!detected) {
+    throw new AppError(ErrorCodes.BAD_REQUEST, 'Only PNG, JPG or WEBP images are allowed', 400);
+  }
+  return detected;
 }
 
 type AppContext = Context<{ Bindings: Env; Variables: AppVariables }>;
@@ -179,23 +221,6 @@ export class BusinessProfileService {
       payload
     );
 
-    if (payload.logoUrl !== undefined) {
-      await d1
-        .prepare('UPDATE users SET avatar_url = ? WHERE id = ? AND chamber_id = ?')
-        .bind(payload.logoUrl ? payload.logoUrl : null, userId, chamberId)
-        .run()
-        .catch(() => {});
-
-      const token = c.get('sessionToken') as string;
-      const session = c.get('session') as any;
-      if (token && session && c.env.KV) {
-        session.avatarUrl = payload.logoUrl || null;
-        await c.env.KV.put(`session:${token}`, JSON.stringify(session), {
-          expirationTtl: 86400,
-        }).catch(() => {});
-      }
-    }
-
     // Audit log
     await this.logAudit(
       d1,
@@ -244,20 +269,19 @@ export class BusinessProfileService {
       );
     }
 
-    // Storage Key Generator as per §8
-    const storageKey = getBusinessLogoStorageKey(chamberId, business.id, fileExtension);
-    let logoUrl = `/api/v1/public/assets/${storageKey}`;
+    // Content type & extension come from the file bytes; the client-sent values are ignored.
+    const image = validateImageUpload(fileBuffer, MAX_IMAGE_UPLOAD_BYTES);
 
-    // Upload to Cloudflare R2 if binding is present
-    if (c.env.STORAGE) {
-      await c.env.STORAGE.put(storageKey, fileBuffer, {
-        httpMetadata: { contentType },
-      });
-    } else {
-      // Local dev fallback: create data URL or simulated URL
-      const base64 = Buffer.from(fileBuffer as any).toString('base64');
-      logoUrl = `data:${contentType};base64,${base64}`;
+    if (!c.env.STORAGE) {
+      throw new AppError(ErrorCodes.INTERNAL_ERROR, 'File storage is not configured', 500);
     }
+
+    // Storage Key Generator as per §8
+    const storageKey = getBusinessLogoStorageKey(chamberId, business.id, image.ext);
+    const logoUrl = `/api/v1/public/assets/${storageKey}`;
+    await c.env.STORAGE.put(storageKey, fileBuffer, {
+      httpMetadata: { contentType: image.mime },
+    });
 
     await BusinessProfilesRepository.updateLogoUrl(d1, chamberId, business.id, logoUrl);
 
@@ -380,17 +404,18 @@ export class BusinessProfileService {
       );
     }
 
-    const storageKey = getBusinessBannerStorageKey(chamberId, business.id, fileExtension);
-    let bannerUrl = `/api/v1/public/assets/${storageKey}`;
+    // Banner limit stays at the existing 8MB (OPEN DECISION OD-013: spec does not state one).
+    const image = validateImageUpload(fileBuffer, 8 * 1024 * 1024);
 
-    if (c.env.STORAGE) {
-      await c.env.STORAGE.put(storageKey, fileBuffer, {
-        httpMetadata: { contentType },
-      });
-    } else {
-      const base64 = Buffer.from(fileBuffer as any).toString('base64');
-      bannerUrl = `data:${contentType};base64,${base64}`;
+    if (!c.env.STORAGE) {
+      throw new AppError(ErrorCodes.INTERNAL_ERROR, 'File storage is not configured', 500);
     }
+
+    const storageKey = getBusinessBannerStorageKey(chamberId, business.id, image.ext);
+    const bannerUrl = `/api/v1/public/assets/${storageKey}`;
+    await c.env.STORAGE.put(storageKey, fileBuffer, {
+      httpMetadata: { contentType: image.mime },
+    });
 
     await BusinessProfilesRepository.updateBannerUrl(d1, chamberId, business.id, bannerUrl);
 
@@ -564,13 +589,21 @@ export class BusinessProfileService {
       );
     }
 
-    const updated = await BusinessProfilesRepository.updateTeamRepresentative(
-      d1,
-      chamberId,
-      business.id,
-      memberRecordId,
-      payload
-    );
+    let updated: boolean;
+    try {
+      updated = await BusinessProfilesRepository.updateTeamRepresentative(
+        d1,
+        chamberId,
+        business.id,
+        memberRecordId,
+        payload
+      );
+    } catch (err: any) {
+      if (err.message?.includes('primary contact must keep full access')) {
+        throw new AppError(ErrorCodes.BAD_REQUEST, err.message, 400);
+      }
+      throw err;
+    }
 
     if (!updated) {
       throw new AppError(ErrorCodes.NOT_FOUND, 'Team representative not found', 404);
@@ -618,12 +651,19 @@ export class BusinessProfileService {
       );
     }
 
-    await BusinessProfilesRepository.setPrimaryContact(
-      d1,
-      chamberId,
-      business.id,
-      targetMemberRecordId
-    );
+    try {
+      await BusinessProfilesRepository.setPrimaryContact(
+        d1,
+        chamberId,
+        business.id,
+        targetMemberRecordId
+      );
+    } catch (err: any) {
+      if (err.message?.includes('Target representative not found')) {
+        throw new AppError(ErrorCodes.NOT_FOUND, 'Team representative not found', 404);
+      }
+      throw err;
+    }
 
     await this.logAudit(
       d1,
@@ -670,21 +710,22 @@ export class BusinessProfileService {
       await d1
         .prepare(
           `INSERT INTO activity_logs (
-            id, chamber_id, user_id, action, entity_type, entity_id, details, created_at
+            id, chamber_id, user_id, action, target_type, target_id, details_json, created_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`
         )
         .bind(
-          `act_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          generatePrefixedId('act'),
           chamberId,
           userId,
           action,
           entityType,
           entityId,
-          details
+          JSON.stringify({ message: details })
         )
         .run();
-    } catch {
-      // Non-blocking audit logger
+    } catch (err) {
+      // Non-blocking, but never silent
+      console.error('[AUDIT_LOG_WRITE_FAILED]', action, err);
     }
   }
 }

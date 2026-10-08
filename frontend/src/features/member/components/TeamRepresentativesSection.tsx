@@ -179,10 +179,6 @@ export const TeamRepresentativesSection: React.FC<TeamRepresentativesSectionProp
       toast.error('Full Name is required');
       return;
     }
-    if (!editEmail.trim()) {
-      toast.error('Email is required');
-      return;
-    }
 
     try {
       setIsSavingEdit(true);
@@ -190,7 +186,6 @@ export const TeamRepresentativesSection: React.FC<TeamRepresentativesSectionProp
       await updateRepresentative(editRep.id, {
         name: editName.trim(),
         jobTitle: editTitle.trim() || undefined,
-        email: editEmail.trim(),
         phones: cleanPhones,
         socials: {
           linkedin: editLinkedin.trim() || undefined,
@@ -206,7 +201,6 @@ export const TeamRepresentativesSection: React.FC<TeamRepresentativesSectionProp
                 ...r,
                 name: editName.trim(),
                 jobTitle: editTitle.trim() || null,
-                email: editEmail.trim(),
                 phones: cleanPhones,
                 socials: {
                   linkedin: editLinkedin.trim() || undefined,
@@ -630,8 +624,9 @@ export const TeamRepresentativesSection: React.FC<TeamRepresentativesSectionProp
                 <Input
                   type="email"
                   value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  placeholder="name@company.com"
+                  readOnly
+                  disabled
+                  title="Email is the sign-in identity and cannot be changed here"
                   className="mt-1 text-sm bg-white dark:bg-slate-900"
                 />
               </div>

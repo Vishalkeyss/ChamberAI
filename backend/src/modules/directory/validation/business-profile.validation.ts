@@ -3,7 +3,6 @@ import { z } from 'zod';
 export const updateBusinessProfileSchema = z.object({
   name: z.string().min(2, 'Business name must be at least 2 characters').max(150).trim(),
   dbaName: z.string().max(100).optional().nullable(),
-  logoUrl: z.string().nullable().optional(),
   tagline: z.string().max(150).optional().nullable(),
   description: z.string().max(5000).optional().nullable(),
   industry: z.string().min(2, 'Industry category is required').max(100),
@@ -27,6 +26,22 @@ export const updateBusinessProfileSchema = z.object({
     })
   ).default([]),
 });
+
+// PATCH /member/team/:id — email is intentionally not editable (it is the login identity).
+export const updateRepresentativeSchema = z
+  .object({
+    name: z.string().min(1).max(100).trim().optional(),
+    jobTitle: z.string().max(100).optional().nullable(),
+    phone: z.string().max(20).optional(),
+    phones: z.array(z.string().max(20)).max(5).optional(),
+    socials: z
+      .object({
+        linkedin: z.string().max(300).optional(),
+        other: z.string().max(300).optional(),
+      })
+      .optional(),
+    accessLevel: z.enum(['full_access', 'billing_only', 'events_networking']).optional(),
+  });
 
 export const inviteRepresentativeSchema = z.object({
   firstName: z.string().min(1, 'First name is required').max(50).trim(),

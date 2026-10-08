@@ -1,3 +1,4 @@
+import { apiUrl } from '@/core/api/base';
 import type {
   InvoicesResponse,
   SavedPaymentMethod,
@@ -30,7 +31,7 @@ export async function fetchMemberInvoices(params: {
   if (params.limit) query.set('limit', params.limit.toString());
 
   const queryString = query.toString() ? `?${query.toString()}` : '';
-  const res = await fetch(`/api/v1/member/invoices${queryString}`, {
+  const res = await fetch(apiUrl(`/api/v1/member/invoices${queryString}`), {
     method: 'GET',
     headers: getAuthHeaders(),
   });
@@ -53,7 +54,7 @@ export async function payMemberInvoice(
   invoiceId: string,
   payload: PayInvoicePayload
 ): Promise<{ invoice_id: string; status: string; transaction_id: string; paid_at: string }> {
-  const res = await fetch(`/api/v1/member/invoices/${encodeURIComponent(invoiceId)}/pay`, {
+  const res = await fetch(apiUrl(`/api/v1/member/invoices/${encodeURIComponent(invoiceId)}/pay`), {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(payload),
@@ -74,7 +75,7 @@ export async function payMemberInvoice(
  * Retrieves saved cards and payment instruments.
  */
 export async function fetchPaymentMethods(): Promise<SavedPaymentMethod[]> {
-  const res = await fetch('/api/v1/member/payment-methods', {
+  const res = await fetch(apiUrl('/api/v1/member/payment-methods'), {
     method: 'GET',
     headers: getAuthHeaders(),
   });
@@ -96,7 +97,7 @@ export async function fetchPaymentMethods(): Promise<SavedPaymentMethod[]> {
 export async function addPaymentMethod(
   payload: AddPaymentMethodPayload
 ): Promise<SavedPaymentMethod> {
-  const res = await fetch('/api/v1/member/payment-methods', {
+  const res = await fetch(apiUrl('/api/v1/member/payment-methods'), {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(payload),
@@ -117,7 +118,7 @@ export async function addPaymentMethod(
  * Removes a saved payment method.
  */
 export async function deletePaymentMethod(methodId: string): Promise<void> {
-  const res = await fetch(`/api/v1/member/payment-methods/${encodeURIComponent(methodId)}`, {
+  const res = await fetch(apiUrl(`/api/v1/member/payment-methods/${encodeURIComponent(methodId)}`), {
     method: 'DELETE',
     headers: getAuthHeaders(),
   });
@@ -134,7 +135,7 @@ export async function deletePaymentMethod(methodId: string): Promise<void> {
  * Sets a payment method as default.
  */
 export async function setDefaultPaymentMethod(methodId: string): Promise<void> {
-  const res = await fetch(`/api/v1/member/payment-methods/${encodeURIComponent(methodId)}/default`, {
+  const res = await fetch(apiUrl(`/api/v1/member/payment-methods/${encodeURIComponent(methodId)}/default`), {
     method: 'PATCH',
     headers: getAuthHeaders(),
   });
@@ -151,7 +152,7 @@ export async function setDefaultPaymentMethod(methodId: string): Promise<void> {
  * Retrieves quota and consumption tracking for plan benefits.
  */
 export async function fetchMemberBenefits(): Promise<BenefitUsageItem[]> {
-  const res = await fetch('/api/v1/member/membership/benefits', {
+  const res = await fetch(apiUrl('/api/v1/member/membership/benefits'), {
     method: 'GET',
     headers: getAuthHeaders(),
   });
@@ -177,7 +178,7 @@ export async function changeMemberPlan(planId: string): Promise<{
   newPlanName: string;
   newPlanPrice: number;
 }> {
-  const res = await fetch('/api/v1/member/membership/change-plan', {
+  const res = await fetch(apiUrl('/api/v1/member/membership/change-plan'), {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify({ planId }),

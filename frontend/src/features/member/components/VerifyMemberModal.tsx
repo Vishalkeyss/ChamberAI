@@ -1,3 +1,4 @@
+import { apiUrl } from '@/core/api/base';
 import React, { useEffect, useState } from 'react';
 import {
   Dialog,
@@ -43,7 +44,7 @@ export const VerifyMemberModal: React.FC<VerifyMemberModalProps> = ({
     setIsLoading(true);
     setError(null);
 
-    fetch(`/api/v1/public/members/verify/${encodeURIComponent(memberId)}`)
+    fetch(apiUrl(`/api/v1/public/members/verify/${encodeURIComponent(memberId)}`))
       .then((res) => {
         if (!res.ok) throw new Error('Member not found or membership is inactive');
         return res.json();

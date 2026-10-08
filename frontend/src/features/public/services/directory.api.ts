@@ -1,3 +1,4 @@
+import { apiUrl } from '@/core/api/base';
 /**
  * Public Directory API Service
  * Fetches business directory listings and filter options from the backend.
@@ -155,7 +156,7 @@ export async function fetchDirectoryListings(
 
 export async function fetchDirectoryFilters(chamberSlug?: string): Promise<DirectoryFilters> {
   try {
-    const res = await fetch('/api/v1/public/directory/filters', {
+    const res = await fetch(apiUrl('/api/v1/public/directory/filters'), {
       headers: getChamberHeaders(chamberSlug),
     });
 

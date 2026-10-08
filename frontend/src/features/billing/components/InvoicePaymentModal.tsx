@@ -175,7 +175,7 @@ export const InvoicePaymentModal: React.FC<InvoicePaymentModalProps> = ({
                           {c.brand} •••• {c.last_four}
                         </p>
                         <p className="text-[11px] text-muted-foreground">
-                          Expires {c.expiry_month.toString().padStart(2, '0')}/{c.expiry_year}
+                          Expires {c.expiry_month != null && c.expiry_year != null ? `${c.expiry_month.toString().padStart(2, '0')}/${c.expiry_year}` : '—'}
                         </p>
                       </div>
                     </div>

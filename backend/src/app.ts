@@ -83,6 +83,13 @@ export function createApp() {
     object.writeHttpMetadata(headers);
     headers.set('etag', object.httpEtag);
     headers.set('cache-control', 'public, max-age=31536000, immutable');
+    // Never let a stored object execute as a page in our origin (stored-XSS guard).
+    headers.set('x-content-type-options', 'nosniff');
+    headers.set('content-security-policy', "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
+    const storedType = (headers.get('content-type') || '').toLowerCase();
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(storedType)) {
+      headers.set('content-disposition', 'attachment');
+    }
     return new Response(object.body, { headers });
   });
 

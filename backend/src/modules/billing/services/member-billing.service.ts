@@ -349,11 +349,12 @@ export class MemberBillingService {
           const pm = details?.paymentMethod;
           if (pm && (pm.lastFour || pm.last_four)) {
             const pmId = generatePrefixedId('pm');
-            const lastFour = String(pm.lastFour || pm.last_four || '4242');
+            const lastFour = String(pm.lastFour || pm.last_four);
             const brand = pm.brand || 'Visa';
-            const expMonth = Number(pm.expiryMonth || pm.expiry_month || 12);
-            const expYear = Number(pm.expiryYear || pm.expiry_year || 2028);
-            const token = pm.gatewayToken || generatePrefixedId('tok');
+            const expMonth = pm.expiryMonth ?? pm.expiry_month ?? null;
+            const expYear = pm.expiryYear ?? pm.expiry_year ?? null;
+            // No gateway integrated (OPEN DECISION): never store a fabricated or client-supplied token.
+            const token = null;
             const createdAt = appRow.created_at || new Date().toISOString();
 
             await db
@@ -385,14 +386,14 @@ export class MemberBillingService {
 
     return (rows.results || []).map((row: any) => {
       const brand = row.brand || 'Visa';
-      const lastFour = row.last_four || '4242';
+      const lastFour = row.last_four || '';
       return {
         id: row.id,
         type: row.type || 'card',
         brand,
         last_four: lastFour,
-        expiry_month: row.expiry_month || 12,
-        expiry_year: row.expiry_year || 2028,
+        expiry_month: row.expiry_month ?? null,
+        expiry_year: row.expiry_year ?? null,
         is_default: Boolean(row.is_default),
         created_at: row.created_at,
       };

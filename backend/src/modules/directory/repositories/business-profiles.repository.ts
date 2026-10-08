@@ -57,128 +57,8 @@ export class BusinessProfilesRepository {
       return rows[0];
     }
 
-    // Fallback: check if user has a business profile from an approved application
-    const fallbackProfile = await db
-      .select()
-      .from(businessProfiles)
-      .where(
-        and(
-          eq(businessProfiles.chamberId, chamberId),
-          or(
-            eq(
-              businessProfiles.businessEmail,
-              sql`(SELECT email FROM users WHERE id = ${userId} AND chamber_id = ${chamberId} LIMIT 1)`
-            ),
-            sql`${businessProfiles.id} IN (
-              SELECT business_id FROM chamber_memberships cm
-              WHERE cm.chamber_id = ${chamberId} AND cm.business_id = ${businessProfiles.id}
-            )`
-          )
-        )
-      )
-      .limit(1);
-
-    if (fallbackProfile.length > 0) {
-      const biz = fallbackProfile[0];
-      const now = new Date().toISOString();
-
-      // Check whether this user already has any membership row for this business
-      const [existingLink] = await db
-        .select()
-        .from(businessMembers)
-        .where(
-          and(
-            eq(businessMembers.chamberId, chamberId),
-            eq(businessMembers.businessId, biz.id),
-            eq(businessMembers.userId, userId)
-          )
-        )
-        .limit(1);
-
-      if (existingLink) {
-        return { business: biz, membership: existingLink };
-      }
-
-      // Determine whether there is already a primary contact for this business
-      const [existingPrimary] = await db
-        .select()
-        .from(businessMembers)
-        .where(
-          and(
-            eq(businessMembers.chamberId, chamberId),
-            eq(businessMembers.businessId, biz.id),
-            eq(businessMembers.isPrimaryContact, 1)
-          )
-        )
-        .limit(1);
-
-      const memberId = generatePrefixedId('bm');
-      const shouldBePrimary = !existingPrimary ? 1 : 0;
-
-      try {
-        await db.insert(businessMembers).values({
-          id: memberId,
-          chamberId,
-          businessId: biz.id,
-          userId,
-          accessLevel: 'full_access',
-          isPrimaryContact: shouldBePrimary,
-          status: 'active',
-          createdAt: now,
-          updatedAt: now,
-        });
-      } catch (insertErr: any) {
-        // Unique constraint on (business_id) WHERE is_primary_contact = 1
-        // can race between concurrent requests. Re-query for any existing row.
-        const [raceRow] = await db
-          .select()
-          .from(businessMembers)
-          .where(
-            and(
-              eq(businessMembers.chamberId, chamberId),
-              eq(businessMembers.businessId, biz.id),
-              eq(businessMembers.userId, userId)
-            )
-          )
-          .limit(1);
-
-        if (raceRow) {
-          return { business: biz, membership: raceRow };
-        }
-
-        // Last resort: insert without primary contact flag
-        const fallbackId = generatePrefixedId('bm');
-        await db.insert(businessMembers).values({
-          id: fallbackId,
-          chamberId,
-          businessId: biz.id,
-          userId,
-          accessLevel: 'full_access',
-          isPrimaryContact: 0,
-          status: 'active',
-          createdAt: now,
-          updatedAt: now,
-        });
-        const [fallbackLinked] = await db
-          .select()
-          .from(businessMembers)
-          .where(eq(businessMembers.id, fallbackId))
-          .limit(1);
-        return { business: biz, membership: fallbackLinked };
-      }
-
-      const [linked] = await db
-        .select()
-        .from(businessMembers)
-        .where(eq(businessMembers.id, memberId))
-        .limit(1);
-
-      return {
-        business: biz,
-        membership: linked,
-      };
-    }
-
+    // No implicit auto-linking: a user is linked to a business only through an explicit
+    // business_members row (created on application approval or by team invite).
     return null;
   }
 
@@ -217,11 +97,17 @@ export class BusinessProfilesRepository {
     const db = drizzle(d1);
     const now = new Date().toISOString();
 
+    // social_links_json also stores bannerUrl (set only by the banner upload). Preserve it
+    // in the same statement so a concurrent banner upload is never overwritten.
+    const socialLinksPayload = JSON.stringify({
+      ...(data.socialLinks || {}),
+      ...(data.dbaName ? { dbaName: data.dbaName } : {}),
+    });
+
     await db
       .update(businessProfiles)
       .set({
         businessName: data.name,
-        ...(data.logoUrl !== undefined ? { businessLogoUrl: data.logoUrl ? data.logoUrl : null } : {}),
         tagline: data.tagline ?? null,
         description: data.description ?? null,
         industry: data.industry,
@@ -232,10 +118,11 @@ export class BusinessProfilesRepository {
         city: data.city ?? null,
         state: data.state ?? null,
         zip: data.zip ?? null,
-        socialLinksJson: JSON.stringify({
-          ...(data.socialLinks || {}),
-          ...(data.dbaName ? { dbaName: data.dbaName } : {}),
-        }),
+        socialLinksJson: sql`CASE
+          WHEN json_extract(${businessProfiles.socialLinksJson}, '$.bannerUrl') IS NOT NULL
+          THEN json_set(${socialLinksPayload}, '$.bannerUrl', json_extract(${businessProfiles.socialLinksJson}, '$.bannerUrl'))
+          ELSE ${socialLinksPayload}
+        END`,
         skillsJson: JSON.stringify(data.skills || []),
         interestsJson: JSON.stringify(data.interests || []),
         locationsJson: JSON.stringify(data.locations || []),
@@ -301,40 +188,19 @@ export class BusinessProfilesRepository {
     const db = drizzle(d1);
     const now = new Date().toISOString();
 
-    // Store in socialLinksJson / banner metadata
-    const [biz] = await db
-      .select()
-      .from(businessProfiles)
+    // Atomic JSON update: no read-modify-write race with concurrent profile saves.
+    await db
+      .update(businessProfiles)
+      .set({
+        socialLinksJson: sql`json_set(COALESCE(NULLIF(${businessProfiles.socialLinksJson}, ''), '{}'), '$.bannerUrl', ${bannerUrl})`,
+        updatedAt: now,
+      })
       .where(
         and(
           eq(businessProfiles.chamberId, chamberId),
           eq(businessProfiles.id, businessId)
         )
-      )
-      .limit(1);
-
-    if (biz) {
-      let socials: Record<string, any> = {};
-      try {
-        socials = JSON.parse(biz.socialLinksJson || '{}');
-      } catch {
-        socials = {};
-      }
-      socials.bannerUrl = bannerUrl;
-
-      await db
-        .update(businessProfiles)
-        .set({
-          socialLinksJson: JSON.stringify(socials),
-          updatedAt: now,
-        })
-        .where(
-          and(
-            eq(businessProfiles.chamberId, chamberId),
-            eq(businessProfiles.id, businessId)
-          )
-        );
-    }
+      );
   }
 
   /**
@@ -545,6 +411,11 @@ export class BusinessProfilesRepository {
 
     if (!target) return false;
 
+    // The primary contact must always keep full access (transfer primary first).
+    if (payload.accessLevel && target.isPrimaryContact === 1 && payload.accessLevel !== 'full_access') {
+      throw new Error('The primary contact must keep full access. Transfer primary contact first.');
+    }
+
     if (payload.accessLevel) {
       await db
         .update(businessMembers)
@@ -555,13 +426,13 @@ export class BusinessProfilesRepository {
         .where(eq(businessMembers.id, memberRecordId));
     }
 
-    if (payload.name || payload.email || payload.phone || (payload.phones && payload.phones.length > 0)) {
+    // Email is a login identity: it is never changed through team management.
+    if (payload.name || payload.phone || (payload.phones && payload.phones.length > 0)) {
       const primaryPhone = payload.phone || (payload.phones ? payload.phones.filter(Boolean)[0] : undefined);
       await db
         .update(users)
         .set({
           ...(payload.name ? { name: payload.name.trim() } : {}),
-          ...(payload.email ? { email: payload.email.trim().toLowerCase() } : {}),
           ...(primaryPhone !== undefined ? { phone: primaryPhone.trim() || null } : {}),
           updatedAt: now,
         })
@@ -600,8 +471,10 @@ export class BusinessProfilesRepository {
       throw new Error('Cannot remove primary contact. Assign another primary contact first.');
     }
 
+    // Soft delete: keep the row for audit history (schema status 'removed').
     await db
-      .delete(businessMembers)
+      .update(businessMembers)
+      .set({ status: 'removed', updatedAt: new Date().toISOString() })
       .where(
         and(
           eq(businessMembers.id, memberRecordId),
@@ -626,35 +499,51 @@ export class BusinessProfilesRepository {
     const db = drizzle(d1);
     const now = new Date().toISOString();
 
-    // 1. Demote all existing primary contacts for this business
-    await db
-      .update(businessMembers)
-      .set({
-        isPrimaryContact: 0,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(businessMembers.chamberId, chamberId),
-          eq(businessMembers.businessId, businessId)
-        )
-      );
-
-    // 2. Promote target member to primary contact
-    await db
-      .update(businessMembers)
-      .set({
-        isPrimaryContact: 1,
-        accessLevel: 'full_access', // Primary contact must have full access
-        updatedAt: now,
-      })
+    // Verify the target is an active representative of this business before changing anything.
+    const [target] = await db
+      .select()
+      .from(businessMembers)
       .where(
         and(
           eq(businessMembers.id, targetMemberRecordId),
           eq(businessMembers.chamberId, chamberId),
-          eq(businessMembers.businessId, businessId)
+          eq(businessMembers.businessId, businessId),
+          eq(businessMembers.status, 'active')
         )
-      );
+      )
+      .limit(1);
+    if (!target) {
+      throw new Error('Target representative not found for this business');
+    }
+
+    // Demote + promote in one atomic batch: the business can never end up with zero
+    // (or two) primary contacts.
+    await db.batch([
+      db
+        .update(businessMembers)
+        .set({ isPrimaryContact: 0, updatedAt: now })
+        .where(
+          and(
+            eq(businessMembers.chamberId, chamberId),
+            eq(businessMembers.businessId, businessId),
+            ne(businessMembers.id, targetMemberRecordId)
+          )
+        ),
+      db
+        .update(businessMembers)
+        .set({
+          isPrimaryContact: 1,
+          accessLevel: 'full_access', // Primary contact must have full access
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(businessMembers.id, targetMemberRecordId),
+            eq(businessMembers.chamberId, chamberId),
+            eq(businessMembers.businessId, businessId)
+          )
+        ),
+    ]);
   }
 
   /**

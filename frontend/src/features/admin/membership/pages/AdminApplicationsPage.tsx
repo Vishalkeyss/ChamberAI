@@ -38,6 +38,7 @@ import {
 } from '../services/admin-applications.api';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useAuth } from '@/hooks/useAuth';
 
 export interface AdminApplicationsPageProps {
   chamberSlug?: string;
@@ -52,6 +53,9 @@ const STAGES = [
 ];
 
 export const AdminApplicationsPage: React.FC<AdminApplicationsPageProps> = ({ chamberSlug }) => {
+  // Approve / reject / request changes / approval mode are full_admin-only on the backend.
+  const { hasRole } = useAuth();
+  const canDecide = hasRole(['full_admin', 'super_admin']);
   const [applications, setApplications] = useState<AdminApplicationItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [boardView, setBoardView] = useState<boolean>(false);
@@ -392,7 +396,7 @@ export const AdminApplicationsPage: React.FC<AdminApplicationsPageProps> = ({ ch
               type="button"
               id="btn-toggle-approval-mode"
               onClick={handleToggleApprovalMode}
-              disabled={isTogglingMode}
+              disabled={isTogglingMode || !canDecide}
               className={cn(
                 'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden',
                 autoApprove ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
@@ -523,7 +527,7 @@ export const AdminApplicationsPage: React.FC<AdminApplicationsPageProps> = ({ ch
                     setDragOverKey(null);
                     const id = e.dataTransfer.getData('text/plain') || draggingId;
                     const a = liveApplications.find((x) => x.id === id);
-                    if (a) moveToStage(a, col.key);
+                    if (a && canDecide) moveToStage(a, col.key);
                     setDraggingId(null);
                   }}
                   className={cn(
@@ -537,7 +541,7 @@ export const AdminApplicationsPage: React.FC<AdminApplicationsPageProps> = ({ ch
                     </div>
                   ) : (
                     colItems.map((a) => {
-                      const actionable = a.status === 'pending' || a.status === 'changes_requested';
+                      const actionable = canDecide && (a.status === 'pending' || a.status === 'changes_requested');
                       return (
                         <div
                           key={a.id}
@@ -661,7 +665,7 @@ export const AdminApplicationsPage: React.FC<AdminApplicationsPageProps> = ({ ch
                   </tr>
                 ) : (
                   filtered.map((a) => {
-                    const actionable = a.status === 'pending' || a.status === 'changes_requested';
+                    const actionable = canDecide && (a.status === 'pending' || a.status === 'changes_requested');
                     return (
                       <tr
                         key={a.id}
@@ -884,7 +888,7 @@ export const AdminApplicationsPage: React.FC<AdminApplicationsPageProps> = ({ ch
             </div>
 
             <div className="p-4 bg-muted/30 border-t border-border flex justify-end gap-2">
-              {(viewingApp.status === 'pending' || viewingApp.status === 'changes_requested') && (
+              {canDecide && (viewingApp.status === 'pending' || viewingApp.status === 'changes_requested') && (
                 <>
                   <button
                     type="button"

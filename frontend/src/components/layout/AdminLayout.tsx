@@ -11,6 +11,8 @@ export interface AdminLayoutProps {
   currentPath?: string;
   onLogout?: () => void;
   onAccountSettings?: () => void;
+  /** Defaults to Account Settings (its Profile tab holds the admin profile form). */
+  onEditProfile?: () => void;
   onNavigate?: (path: string) => void;
 }
 
@@ -38,6 +40,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   currentPath = '/admin/dashboard',
   onLogout,
   onAccountSettings,
+  onEditProfile,
   onNavigate,
 }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -113,6 +116,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
           onToggleSidebar={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           onLogout={onLogout}
           onAccountSettings={onAccountSettings}
+          onEditProfile={onEditProfile ?? onAccountSettings}
         />
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-[#F6F7F9] dark:bg-[#0E182B] scrollbar-thin transition-colors duration-200">

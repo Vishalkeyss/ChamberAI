@@ -1,3 +1,4 @@
+import { apiUrl } from '@/core/api/base';
 /**
  * Prompt 03.1: Business Profile Management, Media Uploads & Team Representatives
  * Frontend API Service
@@ -127,7 +128,7 @@ export function resolveAssetUrl(url: string | null | undefined): string | null {
  * GET /api/v1/member/business-profile
  */
 export async function fetchBusinessProfile(): Promise<BusinessProfileData> {
-  const res = await fetch('/api/v1/member/business-profile', {
+  const res = await fetch(apiUrl('/api/v1/member/business-profile'), {
     method: 'GET',
     headers: getAuthHeaders(false),
   });
@@ -155,7 +156,7 @@ export async function fetchBusinessProfile(): Promise<BusinessProfileData> {
 export async function updateBusinessProfile(
   payload: UpdateBusinessProfilePayload
 ): Promise<{ id: string; updatedAt: string }> {
-  const res = await fetch('/api/v1/member/business-profile', {
+  const res = await fetch(apiUrl('/api/v1/member/business-profile'), {
     method: 'PUT',
     headers: getAuthHeaders(true),
     body: JSON.stringify(payload),
@@ -181,7 +182,7 @@ export async function uploadBusinessLogo(fileOrDataUrl: File | string): Promise<
   let res: Response;
 
   if (typeof fileOrDataUrl === 'string') {
-    res = await fetch('/api/v1/member/business-profile/logo', {
+    res = await fetch(apiUrl('/api/v1/member/business-profile/logo'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -193,7 +194,7 @@ export async function uploadBusinessLogo(fileOrDataUrl: File | string): Promise<
   } else {
     const formData = new FormData();
     formData.append('file', fileOrDataUrl);
-    res = await fetch('/api/v1/member/business-profile/logo', {
+    res = await fetch(apiUrl('/api/v1/member/business-profile/logo'), {
       method: 'POST',
       headers: {
         Accept: 'application/json',
@@ -222,7 +223,7 @@ export async function uploadBusinessLogo(fileOrDataUrl: File | string): Promise<
  * DELETE /api/v1/member/business-profile/logo
  */
 export async function deleteBusinessLogo(): Promise<void> {
-  const res = await fetch('/api/v1/member/business-profile/logo', {
+  const res = await fetch(apiUrl('/api/v1/member/business-profile/logo'), {
     method: 'DELETE',
     headers: getAuthHeaders(false),
   });
@@ -244,7 +245,7 @@ export async function uploadBusinessBanner(fileOrDataUrl: File | string): Promis
   let res: Response;
 
   if (typeof fileOrDataUrl === 'string') {
-    res = await fetch('/api/v1/member/business-profile/banner', {
+    res = await fetch(apiUrl('/api/v1/member/business-profile/banner'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -256,7 +257,7 @@ export async function uploadBusinessBanner(fileOrDataUrl: File | string): Promis
   } else {
     const formData = new FormData();
     formData.append('file', fileOrDataUrl);
-    res = await fetch('/api/v1/member/business-profile/banner', {
+    res = await fetch(apiUrl('/api/v1/member/business-profile/banner'), {
       method: 'POST',
       headers: {
         Accept: 'application/json',
@@ -285,7 +286,7 @@ export async function uploadBusinessBanner(fileOrDataUrl: File | string): Promis
  * GET /api/v1/member/team
  */
 export async function fetchTeamRepresentatives(): Promise<TeamRepresentative[]> {
-  const res = await fetch('/api/v1/member/team', {
+  const res = await fetch(apiUrl('/api/v1/member/team'), {
     method: 'GET',
     headers: getAuthHeaders(false),
   });
@@ -306,7 +307,7 @@ export async function fetchTeamRepresentatives(): Promise<TeamRepresentative[]> 
  * POST /api/v1/member/team/invite
  */
 export async function inviteRepresentative(payload: InviteRepresentativePayload): Promise<TeamRepresentative> {
-  const res = await fetch('/api/v1/member/team/invite', {
+  const res = await fetch(apiUrl('/api/v1/member/team/invite'), {
     method: 'POST',
     headers: getAuthHeaders(true),
     body: JSON.stringify(payload),
@@ -328,7 +329,7 @@ export async function inviteRepresentative(payload: InviteRepresentativePayload)
  * DELETE /api/v1/member/team/:id
  */
 export async function removeRepresentative(id: string): Promise<void> {
-  const res = await fetch(`/api/v1/member/team/${id}`, {
+  const res = await fetch(apiUrl(`/api/v1/member/team/${id}`), {
     method: 'DELETE',
     headers: getAuthHeaders(false),
   });
@@ -346,7 +347,7 @@ export async function removeRepresentative(id: string): Promise<void> {
  * PATCH /api/v1/member/team/:id/primary
  */
 export async function setPrimaryContact(id: string): Promise<void> {
-  const res = await fetch(`/api/v1/member/team/${id}/primary`, {
+  const res = await fetch(apiUrl(`/api/v1/member/team/${id}/primary`), {
     method: 'PATCH',
     headers: getAuthHeaders(false),
   });
@@ -362,13 +363,13 @@ export async function setPrimaryContact(id: string): Promise<void> {
 
 /**
  * PATCH /api/v1/member/team/:id
+ * Email is not editable (it is the representative's sign-in identity).
  */
 export async function updateRepresentative(
   id: string,
   payload: {
     name?: string;
     jobTitle?: string;
-    email?: string;
     phones?: string[];
     socials?: {
       linkedin?: string;
@@ -377,7 +378,7 @@ export async function updateRepresentative(
     accessLevel?: TeamRepresentative['accessLevel'];
   }
 ): Promise<void> {
-  const res = await fetch(`/api/v1/member/team/${encodeURIComponent(id)}`, {
+  const res = await fetch(apiUrl(`/api/v1/member/team/${encodeURIComponent(id)}`), {
     method: 'PATCH',
     headers: getAuthHeaders(true),
     body: JSON.stringify(payload),
@@ -396,7 +397,7 @@ export async function updateRepresentative(
  * GET /api/v1/member/business-profile/network-search
  */
 export async function searchRelatedOrganizations(query: string): Promise<RelatedOrgSearchResult[]> {
-  const res = await fetch(`/api/v1/member/business-profile/network-search?q=${encodeURIComponent(query)}`, {
+  const res = await fetch(apiUrl(`/api/v1/member/business-profile/network-search?q=${encodeURIComponent(query)}`), {
     method: 'GET',
     headers: getAuthHeaders(false),
   });

@@ -382,7 +382,6 @@ export const EditBusinessProfileModal: React.FC<EditBusinessProfileModalProps> =
 
       const payload = {
         name: businessName.trim() || 'My Business',
-        logoUrl: logoUrl || null,
         tagline: tagline.trim() || undefined,
         description: description.trim() || undefined,
         industry: selectedCategories.join(', '),

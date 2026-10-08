@@ -1,3 +1,4 @@
+import { apiUrl } from '@/core/api/base';
 import React, { useState, useEffect } from 'react';
 import {
   CreditCard,
@@ -143,7 +144,7 @@ export const MemberBillingPage: React.FC<MemberBillingPageProps> = ({
       const token = localStorage.getItem('auth_token');
       const downloadUrl = inv.pdf_url || `/api/v1/member/invoices/${encodeURIComponent(inv.id)}/download`;
 
-      const res = await fetch(downloadUrl, {
+      const res = await fetch(inv.pdf_url ? downloadUrl : apiUrl(downloadUrl), {
         method: 'GET',
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -384,7 +385,7 @@ export const MemberBillingPage: React.FC<MemberBillingPageProps> = ({
                       </div>
 
                       <p className="relative font-mono text-xl sm:text-2xl font-bold tracking-[0.16em] text-white my-3">
-                        •••• •••• {pm.last_four || '1234'}
+                        •••• •••• {pm.last_four}
                       </p>
 
                       <div className="relative flex items-end justify-between">
@@ -457,8 +458,9 @@ export const MemberBillingPage: React.FC<MemberBillingPageProps> = ({
                       <div>
                         <p className="text-[10px] uppercase tracking-wider text-white/70">EXPIRES</p>
                         <p className="text-sm font-semibold text-white">
-                          {pm.expiry_month.toString().padStart(2, '0')}/
-                          {pm.expiry_year.toString().slice(-2)}
+                          {pm.expiry_month != null && pm.expiry_year != null
+                            ? `${pm.expiry_month.toString().padStart(2, '0')}/${pm.expiry_year.toString().slice(-2)}`
+                            : '—'}
                         </p>                      </div>
 
                       <div className="flex items-center gap-1.5">

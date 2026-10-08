@@ -1,3 +1,4 @@
+import { apiUrl } from '@/core/api/base';
 import React, { useState, useEffect } from 'react';
 import {
   X,
@@ -113,7 +114,7 @@ export const MemberLoginModal: React.FC<MemberLoginModalProps> = ({
     const portalParam = isSuperAdmin ? 'super_admin' : isAdmin ? 'chamber_admin' : 'member';
 
     try {
-      const res = await fetch(endpoint, {
+      const res = await fetch(apiUrl(endpoint), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -176,7 +177,7 @@ export const MemberLoginModal: React.FC<MemberLoginModalProps> = ({
     const portalParam = isSuperAdmin ? 'super_admin' : isAdmin ? 'chamber_admin' : 'member';
 
     try {
-      const res = await fetch(endpoint, {
+      const res = await fetch(apiUrl(endpoint), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
