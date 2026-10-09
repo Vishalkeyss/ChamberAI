@@ -1,6 +1,7 @@
 import type { AppContext } from '../../../core/context';
 import { AppError, ErrorCodes } from '../../../core/shared/errors';
 import { encryptData } from '../../../core/shared/crypto';
+import { requireEncryptionKey } from '../../../core/config';
 import { newId } from '../../../core/shared/ids';
 import { NotificationPreferencesRepository, type CanonicalPreferenceItem } from '../repositories/notification-preferences.repository';
 import type { UpdateProfileInput, SavePersonalApiKeyInput } from '../validation/account-settings.validation';
@@ -254,9 +255,8 @@ export class AccountSettingsService {
     chamberId: string,
     input: SavePersonalApiKeyInput
   ) {
-    const masterSecret =
-      c.env.CHAMBER_ENCRYPTION_KEY ||
-      'ch_sec_default_256bit_master_key_121meet';
+    // No built-in fallback key (BUG-062).
+    const masterSecret = requireEncryptionKey(c.env);
 
     const encryptedKey = await encryptData(input.api_key, masterSecret);
 

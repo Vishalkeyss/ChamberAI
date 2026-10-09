@@ -419,6 +419,7 @@ function createMockDb() {
 
 describe('Prompt 02.2: Public Membership Applications Integration Tests', () => {
   const env: any = {
+    ENVIRONMENT: 'test',
     DB: createMockDb(),
     KV: createMockKV(),
     JWT_SECRET: 'test_jwt_secret_value_minimum_32_characters_long_for_security',

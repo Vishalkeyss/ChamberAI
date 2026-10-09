@@ -6,6 +6,8 @@ export interface SendOtpSmsParams {
   twilioAccountSid?: string;
   twilioAuthToken?: string;
   twilioFromNumber?: string;
+  /** Only local dev / tests may print the code instead of sending it (BUG-049). */
+  allowConsoleFallback: boolean;
 }
 
 export async function sendOtpSms(params: SendOtpSmsParams): Promise<boolean> {
@@ -17,6 +19,7 @@ export async function sendOtpSms(params: SendOtpSmsParams): Promise<boolean> {
     twilioAccountSid,
     twilioAuthToken,
     twilioFromNumber,
+    allowConsoleFallback,
   } = params;
 
   const portalLabel =
@@ -30,6 +33,10 @@ export async function sendOtpSms(params: SendOtpSmsParams): Promise<boolean> {
 
   // In local development or if Twilio credentials are not set, log to terminal
   if (!twilioAccountSid || !twilioAuthToken || !twilioFromNumber) {
+    if (!allowConsoleFallback) {
+      console.error('[TWILIO_NOT_CONFIGURED] OTP SMS not sent');
+      return false;
+    }
     console.log(
       `\n========================================\n` +
       `[DEV_OTP_SMS_DISPATCH]\n` +

@@ -1,3 +1,4 @@
+import { buildChamberHost } from '@/core/config/app-config';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Plus, Globe, Building2, ShieldAlert, ShieldCheck, MoreHorizontal, Loader2, RefreshCw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -17,98 +18,10 @@ import { fetchSuperChambers, updateChamberStatus } from '../services/super-chamb
 import { getChamberSetupProgress } from '../utils/setup-progress';
 import type { PlatformChamber } from '../types';
 
-// Canonical fallback rows matching reference UI screenshot (used if D1 empty)
-const REFERENCE_CHAMBERS: PlatformChamber[] = [
-  {
-    id: 'cham_austin_001',
-    name: 'Austin Chamber of Commerce',
-    city: 'Austin, TX',
-    subdomain: 'austin',
-    customDomain: 'austinchamber.org',
-    domainStatus: 'verified',
-    adminContactName: 'Alexander Morgan',
-    adminEmail: 'alexander@austinchamber.org',
-    status: 'active',
-    onboarded: true,
-    r2BucketName: null,
-    membersCount: 1240,
-    revenueTotal: 22200,
-    createdAt: '2026-01-10T08:00:00Z',
-    updatedAt: null,
-  },
-  {
-    id: 'cham_denver_002',
-    name: 'Denver Traders Association',
-    city: 'Denver, CO',
-    subdomain: 'denver',
-    customDomain: null,
-    domainStatus: 'none',
-    adminContactName: 'Samantha Cole',
-    adminEmail: 'samantha@denvertraders.org',
-    status: 'active',
-    onboarded: true,
-    r2BucketName: null,
-    membersCount: 860,
-    revenueTotal: 11000,
-    createdAt: '2026-01-15T09:00:00Z',
-    updatedAt: null,
-  },
-  {
-    id: 'cham_portland_003',
-    name: 'Portland Business Guild',
-    city: 'Portland, OR',
-    subdomain: 'portland',
-    customDomain: 'portlandbizguild.com',
-    domainStatus: 'pending_dns',
-    adminContactName: 'Ryan Bennett',
-    adminEmail: 'ryan@portlandbizguild.com',
-    status: 'suspended',
-    onboarded: true,
-    r2BucketName: null,
-    membersCount: 410,
-    revenueTotal: 4460,
-    createdAt: '2026-01-18T10:00:00Z',
-    updatedAt: null,
-  },
-  {
-    id: 'cham_nashville_004',
-    name: 'Nashville Entrepreneurs Circle',
-    city: 'Nashville, TN',
-    subdomain: 'nashville',
-    customDomain: null,
-    domainStatus: 'none',
-    adminContactName: 'Henry Sanders',
-    adminEmail: 'henry@nashvillecircle.org',
-    status: 'active',
-    onboarded: false,
-    r2BucketName: null,
-    membersCount: 285,
-    revenueTotal: 3940,
-    createdAt: '2026-02-01T11:00:00Z',
-    updatedAt: null,
-  },
-  {
-    id: 'cham_seattle_005',
-    name: 'Seattle Commerce Alliance',
-    city: 'Seattle, WA',
-    subdomain: 'seattle',
-    customDomain: 'seattlecommerce.org',
-    domainStatus: 'verified',
-    adminContactName: 'Grace Whitmore',
-    adminEmail: 'grace@seattlecommerce.org',
-    status: 'active',
-    onboarded: false,
-    r2BucketName: null,
-    membersCount: 720,
-    revenueTotal: 9860,
-    createdAt: '2026-02-05T12:00:00Z',
-    updatedAt: null,
-  },
-];
-
 export const SuperChambersPage: React.FC = () => {
   const [chambers, setChambers] = useState<PlatformChamber[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -118,16 +31,14 @@ export const SuperChambersPage: React.FC = () => {
   const loadChambers = async () => {
     try {
       setIsLoading(true);
+      setLoadError(null);
       const res = await fetchSuperChambers();
-      if (res && res.data && res.data.length > 0) {
-        setChambers(res.data);
-      } else {
-        // Fallback to canonical reference items if fresh DB
-        setChambers(REFERENCE_CHAMBERS);
-      }
+      // Live data only — an empty platform shows the empty state (no demo rows).
+      setChambers(res?.data ?? []);
     } catch (err) {
-      console.warn('Could not load live chambers from API, falling back to reference set:', err);
-      setChambers(REFERENCE_CHAMBERS);
+      console.error('Could not load chambers:', err);
+      setChambers([]);
+      setLoadError(err instanceof Error ? err.message : 'Could not load chambers.');
     } finally {
       setIsLoading(false);
     }
@@ -227,6 +138,32 @@ export const SuperChambersPage: React.FC = () => {
                     <span>Loading chambers directory...</span>
                   </td>
                 </tr>
+              ) : loadError ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-muted-foreground">
+                    <ShieldAlert className="h-8 w-8 mx-auto mb-2 text-destructive/70" />
+                    <p className="font-medium text-foreground">Couldn't load chambers</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{loadError}</p>
+                    <Button variant="outline" size="sm" className="mt-3" onClick={loadChambers}>
+                      <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                      Retry
+                    </Button>
+                  </td>
+                </tr>
+              ) : chambers.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-muted-foreground">
+                    <Building2 className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+                    <p className="font-medium text-foreground">No chambers yet</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Provision the first chamber tenant to get started.
+                    </p>
+                    <Button size="sm" className="mt-3" onClick={() => setIsAddModalOpen(true)}>
+                      <Plus className="h-3.5 w-3.5 mr-1.5" />
+                      Add Chamber
+                    </Button>
+                  </td>
+                </tr>
               ) : filteredChambers.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-muted-foreground">
@@ -248,9 +185,9 @@ export const SuperChambersPage: React.FC = () => {
                   const setupDotColor =
                     setupPct >= 80 ? 'bg-emerald-500' : setupPct >= 40 ? 'bg-amber-500' : 'bg-rose-500';
 
-                  const displayDomain = chamber.customDomain || `${chamber.subdomain}.chamber1to1meet.ai`;
+                  const displayDomain = buildChamberHost(chamber) || chamber.subdomain;
                   const domainSubtitle = chamber.customDomain
-                    ? (chamber.domainStatus === 'verified' || chamber.name.includes('Austin') || chamber.name.includes('Seattle') ? 'Verified' : 'Pending DNS')
+                    ? (chamber.domainStatus === 'verified' ? 'Verified' : 'Pending DNS')
                     : null;
 
                   return (

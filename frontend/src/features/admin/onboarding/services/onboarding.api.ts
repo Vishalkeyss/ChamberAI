@@ -22,22 +22,22 @@ export interface OnboardingState {
     city: string;
     admin_contact: string;
     support_email: string;
-    default_currency: string;
-    timezone: string;
+    default_currency: string | null;
+    timezone: string | null;
   };
   branding: {
-    primary_color: string;
-    text_color: string;
-    background_color: string;
+    primary_color: string | null;
+    text_color: string | null;
+    background_color: string | null;
     logo_url: string | null;
-    hero_headline: string;
-    hero_tagline: string;
+    hero_headline: string | null;
+    hero_tagline: string | null;
   };
+  /** Keys are never returned (BUG-060); only whether they are stored. */
   payment_gateway?: {
     provider: 'stripe' | 'razorpay' | 'paypal' | 'none';
-    publishable_key: string;
-    secret_key: string;
     status: string;
+    has_keys: boolean;
   } | null;
   plans: Array<{
     id?: string;
@@ -69,9 +69,9 @@ export interface OnboardingFinishPayload {
     hero_tagline?: string;
   };
   payment_gateway?: {
-    provider: 'stripe' | 'razorpay' | 'paypal' | 'none';
-    publishable_key?: string;
-    secret_key?: string;
+    provider: 'stripe' | 'razorpay' | 'paypal';
+    publishable_key: string;
+    secret_key: string;
   };
   plans?: Array<{
     id?: string;
@@ -99,6 +99,8 @@ export async function fetchOnboardingState(): Promise<OnboardingState> {
   return json.data;
 }
 
+export class OnboardingAlreadyCompletedError extends Error {}
+
 export async function submitFinishOnboarding(payload: OnboardingFinishPayload): Promise<any> {
   const res = await fetch(`${API_BASE}/api/v1/admin/onboarding/finish`, {
     method: 'POST',
@@ -108,7 +110,9 @@ export async function submitFinishOnboarding(payload: OnboardingFinishPayload): 
 
   if (!res.ok) {
     const errorBody = await res.json().catch(() => ({}));
-    throw new Error(errorBody?.error?.message || `Failed to complete onboarding (${res.status})`);
+    const message = errorBody?.error?.message || `Failed to complete onboarding (${res.status})`;
+    if (res.status === 409) throw new OnboardingAlreadyCompletedError(message);
+    throw new Error(message);
   }
 
   const json = await res.json();

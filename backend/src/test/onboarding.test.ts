@@ -111,6 +111,7 @@ describe('Prompt 02.4: Member Overview Dashboard Tests', () => {
     const mockKV = createMockKV();
 
     const env = {
+      ENVIRONMENT: 'test',
       DB: mockDb,
       KV: mockKV,
       SESSIONS: mockKV,
@@ -131,6 +132,7 @@ describe('Prompt 02.4: Member Overview Dashboard Tests', () => {
     await mockKV.put(`session:${token}`, JSON.stringify(mockSession));
 
     const env = {
+      ENVIRONMENT: 'test',
       DB: mockDb,
       KV: mockKV,
       SESSIONS: mockKV,
@@ -178,6 +180,7 @@ describe('Prompt 02.4: Member Overview Dashboard Tests', () => {
     await mockKV.put(`session:${token}`, JSON.stringify(otherChamberSession));
 
     const env = {
+      ENVIRONMENT: 'test',
       DB: mockDb,
       KV: mockKV,
       SESSIONS: mockKV,
@@ -210,6 +213,7 @@ describe('Prompt 02.4: Member Overview Dashboard Tests', () => {
     await mockKV.put(`session:${token}`, JSON.stringify(mockSession));
 
     const env = {
+      ENVIRONMENT: 'test',
       DB: mockDb,
       KV: mockKV,
       SESSIONS: mockKV,
@@ -245,6 +249,7 @@ describe('Prompt 02.4: Member Overview Dashboard Tests', () => {
     await mockKV.put(`session:${token}`, JSON.stringify(mockSession));
 
     const env = {
+      ENVIRONMENT: 'test',
       DB: mockDb,
       KV: mockKV,
       SESSIONS: mockKV,

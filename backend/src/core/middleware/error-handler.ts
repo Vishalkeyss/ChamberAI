@@ -1,5 +1,6 @@
 import type { ErrorHandler } from 'hono';
 import { AppError, ErrorCodes } from '../shared/errors';
+import { ConfigError } from '../config';
 import { errorResponse } from '../shared/response';
 import type { Env } from '../env';
 import type { AppVariables } from '../context';
@@ -14,6 +15,15 @@ export const globalErrorHandler: ErrorHandler<{ Bindings: Env; Variables: AppVar
     return c.json(
       errorResponse(err.code, err.message, err.details, { requestId }),
       err.status as any
+    );
+  }
+
+  // Missing server configuration (core/config): details only in the Worker log.
+  if (err instanceof ConfigError) {
+    console.error('[CONFIG_ERROR]', err.message);
+    return c.json(
+      errorResponse(ErrorCodes.INTERNAL_ERROR, 'This feature is not configured on the server.', undefined, { requestId }),
+      503
     );
   }
 

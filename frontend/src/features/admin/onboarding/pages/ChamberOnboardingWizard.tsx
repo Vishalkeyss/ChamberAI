@@ -11,10 +11,12 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import {
   fetchOnboardingState,
   submitFinishOnboarding,
+  OnboardingAlreadyCompletedError,
   type OnboardingFinishPayload,
 } from '../services/onboarding.api';
 
@@ -43,6 +45,42 @@ const STEP_TITLES = [
   'Invite First Members',
 ];
 
+// OD-107: unfinished wizard progress is kept in this browser per chamber (never the gateway keys).
+const DRAFT_KEY_PREFIX = 'chamber_onboarding_draft_';
+
+interface OnboardingDraft {
+  step: number;
+  chamberName: string;
+  city: string;
+  primaryColor: string;
+  primaryTextColor: string;
+  backgroundColor: string;
+  logoUrl: string | null;
+  heroHeadline: string;
+  heroTagline: string;
+  gatewayProvider: 'stripe' | 'razorpay' | 'paypal';
+  offerPlans: boolean;
+  plans: PlanItem[];
+}
+
+function readDraft(key: string): OnboardingDraft | null {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as OnboardingDraft) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearDraft(key: string | null) {
+  if (!key) return;
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 const THEME_PRESETS = [
   { id: 'navy', name: 'Navy Executive', primary: '#0B2447', text: '#FFFFFF', bg: '#F5F7FA' },
   { id: 'emerald', name: 'Emerald Growth', primary: '#064E3B', text: '#FFFFFF', bg: '#F0FDF4' },
@@ -61,6 +99,7 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isOnboardingCompleted, setIsOnboardingCompleted] = useState<boolean>(false);
+  const [draftKey, setDraftKey] = useState<string | null>(null);
 
   // Step 1: Chamber Profile
   const [chamberNameInput, setChamberNameInput] = useState<string>(chamberName);
@@ -78,7 +117,9 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
   const [gatewayProvider, setGatewayProvider] = useState<'stripe' | 'razorpay' | 'paypal'>('stripe');
   const [publishableKey, setPublishableKey] = useState<string>('');
   const [secretKey, setSecretKey] = useState<string>('');
-  const [gatewayConnected, setGatewayConnected] = useState<boolean>(true);
+  // Keys already stored server-side (never sent back to the browser, BUG-060).
+  const [gatewayHasStoredKeys, setGatewayHasStoredKeys] = useState<boolean>(false);
+  // Currency / timezone have no wizard fields; existing values are kept server-side.
 
   // Step 4: Membership Plans
   const [offerPlans, setOfferPlans] = useState<boolean>(true);
@@ -132,13 +173,7 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
             if (data.payment_gateway.provider && data.payment_gateway.provider !== 'none') {
               setGatewayProvider(data.payment_gateway.provider as 'stripe' | 'razorpay' | 'paypal');
             }
-            if (data.payment_gateway.publishable_key) {
-              setPublishableKey(data.payment_gateway.publishable_key);
-            }
-            if (data.payment_gateway.secret_key) {
-              setSecretKey(data.payment_gateway.secret_key);
-            }
-            setGatewayConnected(data.payment_gateway.status === 'connected');
+            setGatewayHasStoredKeys(Boolean(data.payment_gateway.has_keys));
           }
 
           if (Array.isArray(data.plans) && data.plans.length > 0) {
@@ -170,6 +205,28 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
               },
             ]);
           }
+
+          if (data.is_completed) {
+            clearDraft(DRAFT_KEY_PREFIX + data.chamber_id);
+          } else if (data.chamber_id) {
+            const key = DRAFT_KEY_PREFIX + data.chamber_id;
+            const draft = readDraft(key);
+            if (draft) {
+              setCurrentStep(Math.min(5, Math.max(1, draft.step || 1)));
+              setChamberNameInput(draft.chamberName ?? '');
+              setCity(draft.city ?? '');
+              setPrimaryColor(draft.primaryColor);
+              setPrimaryTextColor(draft.primaryTextColor);
+              setBackgroundColor(draft.backgroundColor);
+              setLogoUrl(draft.logoUrl ?? null);
+              setHeroHeadline(draft.heroHeadline ?? '');
+              setHeroTagline(draft.heroTagline ?? '');
+              setGatewayProvider(draft.gatewayProvider);
+              setOfferPlans(draft.offerPlans);
+              if (Array.isArray(draft.plans)) setPlans(draft.plans);
+            }
+            setDraftKey(key);
+          }
         }
       })
       .catch((err) => {
@@ -179,6 +236,36 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
         setIsLoading(false);
       });
   }, [chamberName]);
+
+  // Save progress while the wizard is open (OD-107).
+  useEffect(() => {
+    if (!draftKey || isLoading || isOnboardingCompleted) return;
+    const draft: OnboardingDraft = {
+      step: currentStep,
+      chamberName: chamberNameInput,
+      city,
+      primaryColor,
+      primaryTextColor,
+      backgroundColor,
+      logoUrl,
+      heroHeadline,
+      heroTagline,
+      gatewayProvider,
+      offerPlans,
+      plans,
+    };
+    try {
+      localStorage.setItem(draftKey, JSON.stringify(draft));
+    } catch {
+      // Quota (large logo) or storage disabled: retry without the logo, else give up silently.
+      try {
+        localStorage.setItem(draftKey, JSON.stringify({ ...draft, logoUrl: null }));
+      } catch {
+        /* storage unavailable */
+      }
+    }
+  }, [draftKey, isLoading, isOnboardingCompleted, currentStep, chamberNameInput, city, primaryColor,
+    primaryTextColor, backgroundColor, logoUrl, heroHeadline, heroTagline, gatewayProvider, offerPlans, plans]);
 
   // Dynamic Initials generator from chamber name
   const getInitials = (name: string): string => {
@@ -373,36 +460,51 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
           })
         : [];
 
+      const hasPublishable = publishableKey.trim().length > 0;
+      const hasSecret = secretKey.trim().length > 0;
+      if (hasPublishable !== hasSecret) {
+        toast.error('Enter both the publishable and the secret key, or leave both empty to skip.');
+        setCurrentStep(3);
+        return;
+      }
+
       const payload: OnboardingFinishPayload = {
         profile: {
           org_name: chamberNameInput.trim(),
           city: city.trim(),
-          default_currency: 'USD',
-          timezone: 'America/Chicago',
         },
         branding: {
           primary_color: primaryColor,
           text_color: primaryTextColor,
           background_color: backgroundColor,
           logo_url: logoUrl,
-          hero_headline: heroHeadline.trim() || 'Empowering Local Businesses to Connect, Grow & Prosper',
-          hero_tagline: heroTagline.trim() || 'Join our community of business pioneers, civic leaders, and local trade partners.',
+          hero_headline: heroHeadline.trim(),
+          hero_tagline: heroTagline.trim() || undefined,
         },
-        payment_gateway: gatewayConnected
+        // Sent only when new keys are entered; empty = skip / keep stored keys.
+        payment_gateway: hasPublishable && hasSecret
           ? {
             provider: gatewayProvider,
-            publishable_key: publishableKey,
-            secret_key: secretKey,
+            publishable_key: publishableKey.trim(),
+            secret_key: secretKey.trim(),
           }
           : undefined,
         plans: activePlans,
       };
 
       await submitFinishOnboarding(payload);
+      clearDraft(draftKey);
       toast.success('Chamber onboarding completed successfully!');
       setIsOnboardingCompleted(true);
       onComplete();
     } catch (err: any) {
+      if (err instanceof OnboardingAlreadyCompletedError) {
+        toast.info('Chamber onboarding was already completed.');
+        clearDraft(draftKey);
+        setIsOnboardingCompleted(true);
+        onComplete();
+        return;
+      }
       toast.error(err.message || 'Failed to finalize setup');
     } finally {
       setIsSubmitting(false);
@@ -515,9 +617,16 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
       {/* Main Card Container */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs p-8 max-w-4xl w-full mx-auto">
         {/* Header */}
-        <h1 className="text-xl font-bold text-slate-900 dark:text-white">
-          Chamber Onboarding Wizard
-        </h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white">
+            Chamber Onboarding Wizard
+          </h1>
+          {onExit && (
+            <Button type="button" variant="outline" size="sm" onClick={onExit}>
+              Do it later
+            </Button>
+          )}
+        </div>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
           Step {currentStep} of 5 — {STEP_TITLES[currentStep - 1]} · {currentChamberName}
         </p>
@@ -965,19 +1074,12 @@ export const ChamberOnboardingWizard: React.FC<ChamberOnboardingWizardProps> = (
               />
             </div>
 
-            {/* Connected status pill */}
-            <div className="mt-4">
-              <button
-                type="button"
-                onClick={() => setGatewayConnected(!gatewayConnected)}
-                className={cn(
-                  'px-4 py-2 rounded-lg text-white text-xs font-semibold inline-flex items-center gap-1.5 shadow-xs transition-colors',
-                  gatewayConnected ? 'bg-[#0B2447] hover:bg-[#16385C]' : 'bg-slate-600 hover:bg-slate-700'
-                )}
-              >
-                {gatewayConnected ? 'Connected ✓' : 'Connect Gateway'}
-              </button>
-            </div>
+            {/* Key status: stored keys are never shown again (BUG-060) */}
+            {gatewayHasStoredKeys && (
+              <p className="mt-4 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                Keys are already saved for this chamber. Leave both fields empty to keep them, or enter new keys to replace them.
+              </p>
+            )}
 
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-4">
               You can skip this step and connect a gateway later from Settings, but no online payments will be collected until you do.

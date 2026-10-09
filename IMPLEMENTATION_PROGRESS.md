@@ -3,7 +3,7 @@
 > **Master Plan Reference:** [`MASTER_IMPLEMENTATION_PLAYBOOK.md`](file:///e:/Chamber/MASTER_IMPLEMENTATION_PLAYBOOK.md)  
 > **Total Phases:** 15 (Phases 00 – 14)  
 > **Total Prompts:** 72  
-> **Status:** Phase 05 in progress (05.2–05.6 done; 05.1 on hold) · Last updated 2026-10-09
+> **Status:** Phase 05 in progress (05.2–05.6 done; 05.1 on hold) · 13.2 partial · Staging deployed · Last updated 2026-10-09
 
 ---
 
@@ -11,7 +11,7 @@
 
 | Total Prompts | Completed | In Progress | Pending | Progress (%) |
 |:---:|:---:|:---:|:---:|:---:|
-| **72** | **25** | **0** | **47** | **34.7%** |
+| **72** | **25** | **1** | **46** | **34.7%** |
 
 ---
 
@@ -194,7 +194,7 @@
 
 ### Phase 13: Chamber Administration, Automations, Wizard & Scoped Portals
 - [ ] **Prompt 13.1**: Chamber Admin Dashboard, Daily Briefing & Health Metrics `[⏳ PENDING]`
-- [ ] **Prompt 13.2**: 5-Step Guided Chamber Setup & Admin Onboarding Wizard `[⏳ PENDING]`
+- [ ] **Prompt 13.2**: 5-Step Guided Chamber Setup & Admin Onboarding Wizard `[🟡 PARTIAL]` — wizard on first admin portal entry, sidebar item only while incomplete, re-access guard (409), Zod validation, encrypted gateway keys (never returned), audit log, browser draft. Open: step 5 member import not persisted, chamber logo stored as data URL (no R2 upload), no currency/timezone/support-email fields.
 - [ ] **Prompt 13.3**: Financial Accounting Exports, Sync History & Automated Schedules `[⏳ PENDING]`
 - [ ] **Prompt 13.4**: Trigger-Based Marketing Automations, Multi-Step Sequences & Recipient Tracking `[⏳ PENDING]`
 - [ ] **Prompt 13.5**: Custom Form Builder & Standalone Marketing Landing Pages `[⏳ PENDING]`
@@ -212,3 +212,10 @@
 - [ ] **Prompt 14.4**: Super Admin Support Desk & Chamber Escalation Requests `[⏳ PENDING]`
 - [ ] **Prompt 14.5**: Global Security Policies, SSO, 2FA & Universal Audit Trail `[⏳ PENDING]`
 - [ ] **Prompt 14.6**: Global Settings, Platform Integrations Hub & Roles Management `[⏳ PENDING]`
+
+---
+
+## Platform / Deployment (outside the 72 prompts)
+- ✅ Central config: `backend/src/core/config`, `frontend/src/core/config/app-config.ts`; staging/production fail closed (503) on missing config; CORS allowlist; OTP never logged outside local dev.
+- ✅ Staging on Cloudflare workers.dev (`chamber-staging`, one Worker for frontend + API, chambers at `/c/<slug>`). See `DEPLOYMENT.md`.
+- ⏳ Production: needs domain routing (OD-110), hosting (OD-111), R2, SendGrid domain authentication, payment gateway (OD-001).

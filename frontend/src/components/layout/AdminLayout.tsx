@@ -14,16 +14,21 @@ export interface AdminLayoutProps {
   /** Defaults to Account Settings (its Profile tab holds the admin profile form). */
   onEditProfile?: () => void;
   onNavigate?: (path: string) => void;
+  /** "Chamber Onboarding" item is listed only while the chamber's onboarding is incomplete. */
+  showOnboarding?: boolean;
 }
 
 function filterAdminNav(
   sections: AdminNavSection[],
-  role: 'full_admin' | 'chapter_admin' | 'group_admin' | 'billing_admin'
+  role: 'full_admin' | 'chapter_admin' | 'group_admin' | 'billing_admin',
+  showOnboarding: boolean
 ): AdminNavSection[] {
   return sections
     .map((sec) => ({
       title: sec.title,
-      items: sec.items.filter((item) => item.allowedRoles.includes(role)),
+      items: sec.items.filter(
+        (item) => item.allowedRoles.includes(role) && (item.id !== 'onboarding' || showOnboarding)
+      ),
     }))
     .filter((sec) => sec.items.length > 0);
 }
@@ -42,6 +47,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   onAccountSettings,
   onEditProfile,
   onNavigate,
+  showOnboarding = false,
 }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -53,7 +59,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
       ? user.role
       : 'full_admin';
 
-  const visibleSections = filterAdminNav(adminNavigation, adminRole);
+  const visibleSections = filterAdminNav(adminNavigation, adminRole, showOnboarding);
 
   const handleItemClick = (_id: string, href: string) => {
     setIsMobileMenuOpen(false);

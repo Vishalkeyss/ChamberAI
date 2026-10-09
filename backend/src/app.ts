@@ -3,6 +3,7 @@ import type { Env } from './core/env';
 import type { AppVariables } from './core/context';
 import { requestIdMiddleware } from './core/middleware/request-id';
 import { corsMiddleware } from './core/middleware/cors';
+import { configGuardMiddleware } from './core/middleware/config-guard';
 import { requireAuth, requireRole } from './core/middleware/auth.middleware';
 import { globalErrorHandler } from './core/middleware/error-handler';
 import { resolveChamberMiddleware } from './core/middleware/tenant-resolver';
@@ -50,6 +51,9 @@ export function createApp() {
 
   // 3. Global Error Handler
   app.onError(globalErrorHandler);
+
+  // 3b. Required configuration for staging / production (core/config)
+  app.use('/api/v1/*', configGuardMiddleware);
 
   // 4. Rate Limiter (120 reqs/min for public access)
   app.use('/api/v1/*', createRateLimiter(120, 60));

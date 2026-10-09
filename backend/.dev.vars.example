@@ -8,9 +8,16 @@
 
 # ── Non-Secret Overrides (optional) ─────────────────────────────────────────
 ENVIRONMENT=development
-PLATFORM_DOMAIN=121meet.com
+PLATFORM_DOMAIN=121meet.app
+
+# Extra CORS origins (exact, comma separated). Optional.
+# ALLOWED_ORIGINS=https://partner.example.org
 
 # ── Email Delivery (SendGrid) ────────────────────────────────────────────────
+# Locally the OTP is printed in the terminal when these are empty.
+# Staging / production REQUIRE all three (the Worker returns 503 otherwise).
+EMAIL_FROM_ADDRESS=no-reply@your-domain.example
+SENDGRID_OTP_TEMPLATE_ID=d-replace_with_template_id
 # Get from: https://app.sendgrid.com/settings/api_keys
 SENDGRID_API_KEY=SG.replace_with_your_sendgrid_api_key
 
@@ -24,8 +31,7 @@ TWILIO_FROM_NUMBER=+1xxxxxxxxxx
 # Generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 CHAMBER_ENCRYPTION_KEY=replace_with_64_char_hex_string
 
-# ── Session Security ─────────────────────────────────────────────────────────
-JWT_SECRET=replace_with_long_random_secret_at_least_64_chars
+# JWT_SECRET is not used by the code yet (sessions are opaque tokens in KV).
 
 # ── Payment Gateways (platform-level defaults) ───────────────────────────────
 # Get from: https://dashboard.stripe.com/apikeys

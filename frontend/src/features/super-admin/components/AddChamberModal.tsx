@@ -11,6 +11,7 @@ import { Building2, Globe, Sparkles, Plus, Loader2, AlertCircle, Phone } from 'l
 import { provisionChamber } from '../services/super-chambers.api';
 import { isValidPhoneNumber, isValidEmail, normalizePhoneNumber } from '@/lib/validation';
 import { EMAIL_PLACEHOLDER, PHONE_PLACEHOLDER } from '@/lib/placeholders';
+import { getPlatformDomain } from '@/core/config/app-config';
 
 interface AddChamberModalProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ export const AddChamberModal: React.FC<AddChamberModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const platformDomainLabel = getPlatformDomain() || 'your-platform-domain';
   const [name, setName] = useState('');
   const [adminName, setAdminName] = useState('');
   const [city, setCity] = useState('');
@@ -235,11 +237,11 @@ export const AddChamberModal: React.FC<AddChamberModalProps> = ({
                   className="flex-1 px-3 py-2 text-sm outline-none bg-transparent text-foreground"
                 />
                 <span className="px-3 py-2 text-sm shrink-0 bg-muted text-muted-foreground border-l border-input">
-                  .chamber1to1meet.ai
+                  .{platformDomainLabel}
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground mt-1">
-                The chamber will be live at <strong className="font-semibold text-foreground">{effectiveSlug || 'chamber'}.chamber1to1meet.ai</strong> immediately after provisioning.
+                The chamber will be live at <strong className="font-semibold text-foreground">{effectiveSlug || 'chamber'}.{platformDomainLabel}</strong> immediately after provisioning.
               </p>
             </div>
 

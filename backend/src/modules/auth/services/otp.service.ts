@@ -11,6 +11,7 @@ import {
 } from '../validation/otp.validation';
 import { sendOtpEmail } from './email-delivery.service';
 import { sendOtpSms } from './sms-delivery.service';
+import { getRuntimeConfig } from '../../../core/config';
 import { SessionService, type CachedSessionRole } from './session.service';
 
 function splitName(fullName?: string | null): { firstName: string; lastName: string } {
@@ -329,9 +330,11 @@ export class OtpService {
       .run();
 
 
-    // 8. Dispatch OTP via the appropriate channel
+    // 8. Dispatch OTP via the appropriate channel (fails closed outside local dev, BUG-049)
+    const config = getRuntimeConfig(c.env);
+    let delivered: boolean;
     if (isPhone) {
-      await sendOtpSms({
+      delivered = await sendOtpSms({
         to: normalizedIdentifier,
         code,
         portal,
@@ -339,15 +342,23 @@ export class OtpService {
         twilioAccountSid: c.env.TWILIO_ACCOUNT_SID,
         twilioAuthToken: c.env.TWILIO_AUTH_TOKEN,
         twilioFromNumber: c.env.TWILIO_FROM_NUMBER,
+        allowConsoleFallback: config.isLocal,
       });
     } else {
-      await sendOtpEmail({
+      delivered = await sendOtpEmail({
         to: normalizedIdentifier,
         code,
         portal,
         chamberName,
         sendgridApiKey: c.env.SENDGRID_API_KEY,
+        fromAddress: config.emailFromAddress,
+        templateId: config.sendgridOtpTemplateId,
+        allowConsoleFallback: config.isLocal,
       });
+    }
+    if (!delivered) {
+      await c.env.DB.prepare('DELETE FROM otp_codes WHERE id = ?').bind(otpId).run().catch(() => undefined);
+      throw new AppError(ErrorCodes.INTERNAL_ERROR, 'Verification code could not be sent. Please try again later.', 503);
     }
 
     return {
