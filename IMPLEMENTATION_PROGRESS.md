@@ -3,7 +3,7 @@
 > **Master Plan Reference:** [`MASTER_IMPLEMENTATION_PLAYBOOK.md`](file:///e:/Chamber/MASTER_IMPLEMENTATION_PLAYBOOK.md)  
 > **Total Phases:** 15 (Phases 00 – 14)  
 > **Total Prompts:** 72  
-> **Status:** Phase 05 in progress (05.2–05.5 done; 05.1 on hold) · Last updated 2026-10-08
+> **Status:** Phase 05 in progress (05.2–05.6 done; 05.1 on hold) · Last updated 2026-10-09
 
 ---
 
@@ -11,7 +11,7 @@
 
 | Total Prompts | Completed | In Progress | Pending | Progress (%) |
 |:---:|:---:|:---:|:---:|:---:|
-| **72** | **24** | **0** | **48** | **33.3%** |
+| **72** | **25** | **0** | **47** | **34.7%** |
 
 ---
 
@@ -24,7 +24,7 @@
 | **Phase 02** | Membership Plans, Applications, Review & Billing | 5 | ✅ Completed | 5 / 5 |
 | **Phase 03** | Business Profiles & Member Directory | 2 | ✅ Completed (spec gaps open) | 2 / 2 |
 | **Phase 04** | Events, Ticketing, Sponsorships & Day-Of Check-In | 6 | ✅ Completed (OD-001 payment pending) | 6 / 6 |
-| **Phase 05** | Networking, 1:1 Meetings, Messaging & CRM | 6 | 🔄 In Progress (05.1 on hold) | 4 / 6 |
+| **Phase 05** | Networking, 1:1 Meetings, Messaging & CRM | 6 | 🔄 In Progress (05.1 on hold) | 5 / 6 |
 | **Phase 06** | Community Chapters, Interest Groups & Polls | 4 | ⏳ Pending | 0 / 4 |
 | **Phase 07** | Content Publishing, Announcements, Blog, Media & Jobs | 6 | ⏳ Pending | 0 / 6 |
 | **Phase 08** | Learning Management (LMS), CEU & Loyalty Rewards | 4 | ⏳ Pending | 0 / 4 |
@@ -126,7 +126,10 @@
   - *Backend:* migration `0019_crm_tasks.sql`, `db/schema/crm.schema.ts`, `modules/crm/{routes,services,repositories,validation}`, `modules/tasks/{routes,services,repositories,validation}`, `test/crm-tasks.test.ts`
   - *Frontend:* `features/crm/pages/CrmPipelinePage.tsx` (+ PipelineKanbanBoard, ContactCard, ContactDetailDrawer, AddContactModal), `features/tasks/pages/KanbanTasksPage.tsx` (+ TaskBoard, TaskCard, TaskFormModal); quick conversion from received referrals / directory profile
   - *Status:* Private per-owner CRM (6 stages, metrics + win rate, drag + menu move, timeline, CSV export) and Kanban tasks (quick add, urgent priority, overdue, contact link, completed_at). Skipped: 09:00 reminders (OD-086, no scheduler), super-admin view (OD-088).
-- [ ] **Prompt 05.6**: Chamber Mentorship Program, Matching & Relationships `[⏳ PENDING]`
+- [x] **Prompt 05.6**: Chamber Mentorship Program, Matching & Relationships `[✅ COMPLETED]`
+  - *Backend:* migration `0020_mentorship.sql`, `db/schema/mentorship.schema.ts`, `modules/mentorship/{routes,services,repositories,validation}`, `test/mentorship.test.ts`
+  - *Frontend:* `features/mentorship/pages/MentorshipHubPage.tsx` (+ MentorCard, MentorshipRequestModal, ActiveConnectionCard, RequestCard, MentorProfileEditor), `features/admin/mentorship/AdminMentorshipPage.tsx` (`/admin/mentorship`)
+  - *Status:* 3-tab hub (find / requests incl. active + completed / profile; "My Connections" removed by user), atomic capacity + counters, duplicate guard (unique index), decline reason, shared notes, mentee rating on completion, in-app notifications + audit, admin KPIs / pairs / pause (chapter admin scoped). Skipped: AI matching (OD-093), Schedule 1:1 (05.1 hold), email alerts (OD-100), super-admin view.
 
 ---
 

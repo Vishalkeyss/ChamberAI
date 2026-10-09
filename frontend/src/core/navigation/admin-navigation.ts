@@ -68,6 +68,14 @@ export const adminNavigation: AdminNavSection[] = [
         allowedRoles: ['full_admin', 'chapter_admin', 'billing_admin'],
       },
       {
+        // Prompt 05.6 admin program oversight (OD-098).
+        id: 'mentorship',
+        label: 'Mentorship',
+        href: '/admin/mentorship',
+        icon: 'Award',
+        allowedRoles: ['full_admin', 'chapter_admin'],
+      },
+      {
         id: 'related-orgs',
         label: 'Related Organizations',
         href: '/admin/related-orgs',

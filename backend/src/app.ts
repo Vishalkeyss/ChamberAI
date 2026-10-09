@@ -35,6 +35,7 @@ import { referralsRouter } from './modules/networking/routes/referrals.routes';
 import { businessCardRouter } from './modules/networking/routes/business-card.routes';
 import { crmRouter } from './modules/crm/routes/crm.routes';
 import { tasksRouter } from './modules/tasks/routes/tasks.routes';
+import { mentorshipRouter } from './modules/mentorship/routes/mentorship.routes';
 import { runMigrations, getMigrationHistory } from './core/db/migrator';
 import { successResponse } from './core/shared/response';
 
@@ -86,6 +87,7 @@ export function createApp() {
   apiV1.route('/', businessCardRouter);
   apiV1.route('/', crmRouter);
   apiV1.route('/', tasksRouter);
+  apiV1.route('/', mentorshipRouter);
 
   // Public Asset Delivery (Streams images/files from Cloudflare R2 / Miniflare STORAGE)
   apiV1.get('/public/assets/*', async (c) => {

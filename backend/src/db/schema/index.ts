@@ -20,3 +20,4 @@ export * from './referrals.schema';
 export * from './notifications.schema';
 export * from './chamber-settings.schema';
 export * from './crm.schema';
+export * from './mentorship.schema';

@@ -47,8 +47,10 @@ import { DigitalCardPage } from './features/networking/pages/DigitalCardPage';
 import { PublicCardPage } from './features/public/pages/PublicCardPage';
 import { CrmPipelinePage } from './features/crm/pages/CrmPipelinePage';
 import { KanbanTasksPage } from './features/tasks/pages/KanbanTasksPage';
+import { MentorshipHubPage } from './features/mentorship/pages/MentorshipHubPage';
+import { AdminMentorshipPage } from './features/admin/mentorship/AdminMentorshipPage';
 
-export type MemberViewType = 'overview' | 'plans' | 'billing' | 'directory' | 'events' | 'messages' | 'referrals' | 'card' | 'crm' | 'tasks';
+export type MemberViewType = 'overview' | 'plans' | 'billing' | 'directory' | 'events' | 'messages' | 'referrals' | 'card' | 'crm' | 'tasks' | 'mentorship';
 
 const MEMBER_VIEW_ALIAS_MAP: Record<string, MemberViewType> = {
   membership: 'plans',
@@ -63,6 +65,7 @@ const MEMBER_VIEW_ALIAS_MAP: Record<string, MemberViewType> = {
   card: 'card',
   crm: 'crm',
   tasks: 'tasks',
+  mentorship: 'mentorship',
   overview: 'overview',
 };
 
@@ -880,6 +883,8 @@ function AppContent() {
                   ? '/portal/crm'
                   : memberView === 'tasks'
                   ? '/portal/tasks'
+                  : memberView === 'mentorship'
+                  ? '/portal/mentorship'
                   : '/portal/overview'
               }
               onNavigate={(path) => {
@@ -976,6 +981,15 @@ function AppContent() {
                 <CrmPipelinePage chamberSlug={resolvedChamberSlug} />
               ) : memberView === 'tasks' ? (
                 <KanbanTasksPage />
+              ) : memberView === 'mentorship' ? (
+                <MentorshipHubPage
+                  onOpenMessages={(partnerId) => {
+                    setMemberView('messages');
+                    if (typeof window !== 'undefined') {
+                      window.history.pushState({}, '', `/portal/messages?with=${encodeURIComponent(partnerId)}`);
+                    }
+                  }}
+                />
               ) : memberView === 'card' ? (
                 <DigitalCardPage />
               ) : memberView === 'referrals' ? (
@@ -1141,6 +1155,8 @@ function AppContent() {
                   onNavigateBack={() => setAdminView('plans')}
                   onPlanSaved={() => setAdminView('plans')}
                 />
+              ) : adminView === 'mentorship' ? (
+                <AdminMentorshipPage />
               ) : adminView === 'dashboard' ? (
                 <div className="space-y-6">
                   <div className="flex items-center justify-between">
