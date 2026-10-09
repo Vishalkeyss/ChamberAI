@@ -579,13 +579,13 @@ jobs:
 
 
       # ============================================================
-      # 4. CREATE CODEX TASK FILE
+      # 4. CREATE AGENT TASK FILE
       #
       # IMPORTANT:
       # This happens AFTER git clean -fd so .ai-task.md is not deleted.
       # ============================================================
 
-      - name: Create Codex task instructions
+      - name: Create agent task instructions
         if: steps.prepare.outputs.issue_key != ''
         env:
           ISSUE_KEY: ${{ steps.prepare.outputs.issue_key }}
@@ -680,149 +680,162 @@ jobs:
 
 
       # ============================================================
-      # 5. RUN GEMINI AGENT — IMPLEMENT + TEST + FIX
+      # 5. RUN CLAUDE AGENT — IMPLEMENT + TEST + FIX
       # ============================================================
 
-      - name: Run Gemini Coding Agent
+      - name: Run Claude Coding Agent
         if: steps.prepare.outputs.issue_key != ''
-        id: gemini
+        id: claude
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ISSUE_KEY: ${{ steps.prepare.outputs.issue_key }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [ -z "${GEMINI_API_KEY:-}" ]; then
-            echo "ERROR: GEMINI_API_KEY secret is missing."
-            echo "Please add GEMINI_API_KEY (from https://aistudio.google.com/) to GitHub repo secrets."
+          if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "ERROR: ANTHROPIC_API_KEY secret is missing."
+            echo "Add ANTHROPIC_API_KEY (from https://platform.claude.com/) to the GitHub repo secrets."
             exit 1
           fi
 
-          echo "Installing Gemini SDK..."
-          AGENT_DIR="${RUNNER_TEMP}/gemini-agent"
+          echo "Installing Anthropic SDK..."
+          AGENT_DIR="${RUNNER_TEMP}/claude-agent"
           mkdir -p "$AGENT_DIR"
           cd "$AGENT_DIR"
 
           npm init -y >/dev/null 2>&1
-          npm install @google/genai undici >/dev/null 2>&1
+          npm install @anthropic-ai/sdk >/dev/null 2>&1
 
           cat > "$AGENT_DIR/agent.mjs" <<'NODE'
-          import { Agent, setGlobalDispatcher } from "undici";
-          import { GoogleGenAI } from "@google/genai";
+          import Anthropic from "@anthropic-ai/sdk";
+          import { betaTool } from "@anthropic-ai/sdk/helpers/beta/json-schema";
           import fs from "node:fs";
           import path from "node:path";
           import { execSync } from "node:child_process";
 
-          // Prevent undici headers timeout on long Gemini tool thinking turns
-          setGlobalDispatcher(new Agent({
-            headersTimeout: 600000, // 10 minutes
-            bodyTimeout: 600000,    // 10 minutes
-            keepAliveTimeout: 60000,
-            connections: 20
-          }));
-
-          const apiKey = process.env.GEMINI_API_KEY;
-          const workspace = process.env.GITHUB_WORKSPACE;
+          const workspace = path.resolve(process.env.GITHUB_WORKSPACE);
           const issueKey = process.env.ISSUE_KEY;
 
-          const ai = new GoogleGenAI({
-            apiKey,
-            httpOptions: {
-              timeout: 600000
+          // Reads ANTHROPIC_API_KEY from the environment. Retries 429 / 5xx / connection errors.
+          const client = new Anthropic({ maxRetries: 4 });
+
+          // Model-supplied paths are untrusted: keep them inside the workspace.
+          function resolveInWorkspace(relPath) {
+            const target = path.resolve(workspace, relPath || ".");
+            const relative = path.relative(workspace, target);
+            if (relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative)) {
+              throw new Error("Path escapes the workspace");
+            }
+            return target;
+          }
+
+          const asResult = (value) => JSON.stringify(value);
+
+          const readFile = betaTool({
+            name: "readFile",
+            description: "Read the contents of a file. Path is relative to the repository root.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                filePath: { type: "string", description: "Relative path to the file in the workspace" }
+              },
+              required: ["filePath"],
+              additionalProperties: false
+            },
+            run: async ({ filePath }) => {
+              try {
+                const full = resolveInWorkspace(filePath);
+                if (!fs.existsSync(full)) return asResult({ error: `File not found: ${filePath}` });
+                return fs.readFileSync(full, "utf8");
+              } catch (err) {
+                return asResult({ error: err.message });
+              }
             }
           });
 
-          // Tool definitions for autonomous coding
-          const readFileDeclaration = {
-            name: "readFile",
-            description: "Read contents of a file relative to workspace root",
-            parameters: {
-              type: "OBJECT",
-              properties: {
-                filePath: { type: "STRING", description: "Relative path to file in workspace" }
-              },
-              required: ["filePath"]
-            }
-          };
-
-          const writeFileDeclaration = {
+          const writeFile = betaTool({
             name: "writeFile",
-            description: "Write or update contents of a file relative to workspace root",
-            parameters: {
-              type: "OBJECT",
+            description: "Create or overwrite a file with the given full content. Path is relative to the repository root.",
+            inputSchema: {
+              type: "object",
               properties: {
-                filePath: { type: "STRING", description: "Relative path to file in workspace" },
-                content: { type: "STRING", description: "Full new content of the file" }
+                filePath: { type: "string", description: "Relative path to the file in the workspace" },
+                content: { type: "string", description: "Full new content of the file" }
               },
-              required: ["filePath", "content"]
+              required: ["filePath", "content"],
+              additionalProperties: false
+            },
+            run: async ({ filePath, content }) => {
+              try {
+                const full = resolveInWorkspace(filePath);
+                fs.mkdirSync(path.dirname(full), { recursive: true });
+                fs.writeFileSync(full, content, "utf8");
+                console.log(`writeFile: ${filePath}`);
+                return asResult({ success: true, filePath });
+              } catch (err) {
+                return asResult({ error: err.message });
+              }
             }
-          };
+          });
 
-          const runCommandDeclaration = {
-            name: "runCommand",
-            description: "Run a shell command (e.g., npm test, npm run build, git status) in workspace",
-            parameters: {
-              type: "OBJECT",
-              properties: {
-                command: { type: "STRING", description: "Shell command line to execute" },
-                cwd: { type: "STRING", description: "Optional subdirectory (e.g. frontend, backend)" }
-              },
-              required: ["command"]
-            }
-          };
-
-          const listFilesDeclaration = {
+          const listFiles = betaTool({
             name: "listFiles",
-            description: "List files and directories in a given workspace subdirectory",
-            parameters: {
-              type: "OBJECT",
+            description: "List files and directories in a directory. Path is relative to the repository root.",
+            inputSchema: {
+              type: "object",
               properties: {
-                dirPath: { type: "STRING", description: "Relative path to directory" }
+                dirPath: { type: "string", description: "Relative path to the directory ('.' for the root)" }
               },
-              required: ["dirPath"]
-            }
-          };
-
-          function executeTool(name, args) {
-            try {
-              if (name === "readFile") {
-                const fullPath = path.resolve(workspace, args.filePath);
-                if (!fullPath.startsWith(workspace)) return { error: "Path traversal forbidden" };
-                if (!fs.existsSync(fullPath)) return { error: `File not found: ${args.filePath}` };
-                return { content: fs.readFileSync(fullPath, "utf8") };
-              }
-              if (name === "writeFile") {
-                const fullPath = path.resolve(workspace, args.filePath);
-                if (!fullPath.startsWith(workspace)) return { error: "Path traversal forbidden" };
-                fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-                fs.writeFileSync(fullPath, args.content, "utf8");
-                return { success: true, filePath: args.filePath };
-              }
-              if (name === "listFiles") {
-                const fullPath = path.resolve(workspace, args.dirPath || ".");
-                if (!fullPath.startsWith(workspace)) return { error: "Path traversal forbidden" };
-                const items = fs.readdirSync(fullPath, { withFileTypes: true }).map(d => ({
+              required: ["dirPath"],
+              additionalProperties: false
+            },
+            run: async ({ dirPath }) => {
+              try {
+                const full = resolveInWorkspace(dirPath);
+                const items = fs.readdirSync(full, { withFileTypes: true }).map((d) => ({
                   name: d.name,
                   isDirectory: d.isDirectory()
                 }));
-                return { items };
+                return asResult({ items });
+              } catch (err) {
+                return asResult({ error: err.message });
               }
-              if (name === "runCommand") {
-                const targetCwd = args.cwd ? path.resolve(workspace, args.cwd) : workspace;
-                const output = execSync(args.command, {
-                  cwd: targetCwd,
+            }
+          });
+
+          const runCommand = betaTool({
+            name: "runCommand",
+            description: "Run a shell command (e.g. npm test, npm run build, git status) in the workspace or a subdirectory. Times out after 3 minutes.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                command: { type: "string", description: "Shell command line to execute" },
+                cwd: { type: "string", description: "Optional subdirectory, e.g. frontend or backend" }
+              },
+              required: ["command"],
+              additionalProperties: false
+            },
+            run: async ({ command, cwd }) => {
+              console.log(`runCommand: ${command}${cwd ? ` (in ${cwd})` : ""}`);
+              try {
+                const stdout = execSync(command, {
+                  cwd: resolveInWorkspace(cwd),
                   encoding: "utf8",
                   timeout: 180000,
                   maxBuffer: 10 * 1024 * 1024
                 });
-                return { stdout: output };
+                return asResult({ exitCode: 0, stdout });
+              } catch (err) {
+                return asResult({
+                  exitCode: err.status ?? 1,
+                  error: err.message,
+                  stdout: err.stdout,
+                  stderr: err.stderr
+                });
               }
-              return { error: `Unknown tool: ${name}` };
-            } catch (err) {
-              return { error: err.message, stdout: err.stdout, stderr: err.stderr };
             }
-          }
+          });
 
           async function main() {
             const taskInstructions = fs.readFileSync(path.join(workspace, ".ai-task.md"), "utf8");
@@ -831,135 +844,83 @@ jobs:
               : "";
 
             const systemPrompt = [
-              "You are an elite autonomous AI coding agent pair-programming on this repository.",
-              "Your task is to implement the Jira issue: " + issueKey,
+              "You are an autonomous coding agent working in this repository inside a GitHub Actions runner.",
+              `You are implementing Jira issue ${issueKey}.`,
               "",
-              "RULES AND INVARIANTS FROM AGENTS.MD:",
+              "Project rules from AGENTS.md:",
               agentsMd,
               "",
-              "YOUR WORKFLOW:",
-              "1. Use listFiles/readFile to inspect existing code and architecture.",
-              "2. Modify only the required files using writeFile.",
-              "3. NEVER hardcode secrets, ports, or IDs.",
-              "4. Run build/tests using runCommand (e.g. 'npm run build' in frontend, 'npm test' in backend) to verify 0 errors.",
-              "5. If there are compiler or test errors, fix them using writeFile and re-run.",
-              "6. Once completely done and verified, provide a final concise summary of your changes."
+              "How to work:",
+              "1. Use listFiles and readFile to understand the existing code before changing it.",
+              "2. Change only the files the task needs, using writeFile with the complete new file content.",
+              "3. Never hardcode secrets, URLs, ports or IDs.",
+              "4. Verify with runCommand (for example the backend tests and typecheck, the frontend build) and fix any failure your change caused.",
+              "5. Do not commit or push; the workflow does that.",
+              "6. When the work is done and verified, reply with the completion report described in the task, without further tool calls."
             ].join("\n");
 
-            console.log("Starting Gemini autonomous loop...");
+            console.log("Starting Claude agent...");
 
-            const candidateModels = [
-              process.env.GEMINI_MODEL,
-              "gemini-3.8-flash",
-              "gemini-3.5-flash",
-              "gemini-2.5-flash",
-              "gemini-3.1-pro-preview"
-            ].filter(Boolean);
-
-            let chat = null;
-            let response = null;
-            let selectedModel = "";
-
-            for (const modelToTry of candidateModels) {
-              console.log(`Attempting to connect with model: ${modelToTry}...`);
-              try {
-                chat = ai.chats.create({
-                  model: modelToTry,
-                  config: {
-                    systemInstruction: systemPrompt,
-                    tools: [{
-                      functionDeclarations: [
-                        readFileDeclaration,
-                        writeFileDeclaration,
-                        runCommandDeclaration,
-                        listFilesDeclaration
-                      ]
-                    }]
-                  }
-                });
-
-                response = await chat.sendMessage({
-                  message: `Please implement this task completely and verify with tests/build:\n\n${taskInstructions}`
-                });
-
-                selectedModel = modelToTry;
-                console.log(`Successfully started session with model: ${selectedModel}`);
-                break;
-              } catch (modelErr) {
-                console.log(`Model ${modelToTry} failed: ${modelErr.message}`);
-                if (modelErr.message?.includes("429") || modelErr.message?.includes("Quota exceeded") || modelErr.status === 429) {
-                  console.log(`Quota exceeded for ${modelToTry}. Trying next fallback model...`);
+            const runner = client.beta.messages.toolRunner({
+              model: "claude-sonnet-5-5",
+              max_tokens: 32000,
+              max_iterations: 60,
+              // Streaming: required by the SDK for large max_tokens (avoids HTTP timeouts).
+              stream: true,
+              output_config: { effort: "medium" },
+              // A safety-classifier refusal is re-run on Anthropic's recommended fallback model.
+              betas: ["server-side-fallback-2026-07-01"],
+              fallbacks: "default",
+              system: systemPrompt,
+              tools: [readFile, writeFile, listFiles, runCommand],
+              messages: [
+                {
+                  role: "user",
+                  content: `Implement this task completely and verify it with tests/build:\n\n${taskInstructions}`
                 }
-              }
+              ]
+            });
+
+            let turn = 0;
+            for await (const stream of runner) {
+              const message = await stream.finalMessage();
+              turn++;
+              const calls = message.content.filter((b) => b.type === "tool_use").map((b) => b.name);
+              console.log(`[Turn ${turn}] stop_reason=${message.stop_reason}${calls.length ? ` tools=${calls.join(", ")}` : ""}`);
             }
 
-            if (!chat || !response) {
-              throw new Error("All candidate Gemini models failed to initialize. Please check your API key quota at https://aistudio.google.com/rate-limit");
+            const finalMessage = await runner.done();
+
+            if (finalMessage.stop_reason === "refusal") {
+              throw new Error(`Claude declined the task (${finalMessage.stop_details?.category ?? "unknown"}).`);
+            }
+            if (finalMessage.stop_reason === "tool_use") {
+              throw new Error("Agent hit the iteration limit before finishing.");
+            }
+            if (finalMessage.stop_reason === "max_tokens") {
+              throw new Error("Agent response was cut off (max_tokens).");
             }
 
-            const maxTurns = 25;
-            let turns = 0;
-            let finalSummary = "";
+            const finalSummary = finalMessage.content
+              .filter((b) => b.type === "text")
+              .map((b) => b.text)
+              .join("\n")
+              .trim() || "Implementation completed.";
 
-            while (turns++ < maxTurns) {
-              const functionCalls = response.functionCalls || [];
-              if (!functionCalls || functionCalls.length === 0) {
-                finalSummary = response.text || "Implementation completed successfully.";
-                break;
-              }
-
-              const parts = [];
-              for (const call of functionCalls) {
-                console.log(`[Turn ${turns}] Tool Call: ${call.name}(${JSON.stringify(call.args)})`);
-                const result = executeTool(call.name, call.args);
-                parts.push({
-                  functionResponse: {
-                    name: call.name,
-                    response: {
-                      output: result
-                    }
-                  }
-                });
-              }
-
-              let sendAttempts = 0;
-              let nextResponse = null;
-              const maxAttempts = 5;
-              while (sendAttempts++ < maxAttempts) {
-                try {
-                  nextResponse = await chat.sendMessage({
-                    message: parts
-                  });
-                  break;
-                } catch (sendErr) {
-                  console.log(`[Turn ${turns}] sendMessage warning (attempt ${sendAttempts}/${maxAttempts}): ${sendErr.message}`);
-                  if (sendAttempts < maxAttempts) {
-                    let waitMs = 25000; // default 25s for free tier RPM window
-                    const retryInfoMatch = sendErr.message?.match(/retry in ([0-9.]+)s/i) || sendErr.message?.match(/"retryDelay":\s*"([0-9]+)s"/i);
-                    if (retryInfoMatch && retryInfoMatch[1]) {
-                      const seconds = Math.ceil(parseFloat(retryInfoMatch[1])) + 2;
-                      waitMs = seconds * 1000;
-                    }
-                    console.log(`Rate limit backoff: waiting ${Math.round(waitMs / 1000)}s before next attempt...`);
-                    await new Promise(r => setTimeout(r, waitMs));
-                  } else {
-                    throw sendErr;
-                  }
-                }
-              }
-              response = nextResponse;
-
-              // Gentle 4s pacing between turns to stay safely below 5-15 RPM free tier limits
-              await new Promise(r => setTimeout(r, 4000));
-            }
-
-            console.log("Agent finished. Writing output report...");
-            fs.writeFileSync(path.join(workspace, "gemini-output.md"), finalSummary, "utf8");
-            console.log("Gemini agent completed successfully.");
+            fs.writeFileSync(path.join(workspace, "claude-output.md"), finalSummary, "utf8");
+            console.log("Claude agent completed successfully.");
           }
 
-          main().catch(err => {
-            console.error("Agent error:", err);
+          main().catch((err) => {
+            if (err instanceof Anthropic.AuthenticationError) {
+              console.error("Agent error: ANTHROPIC_API_KEY is invalid.");
+            } else if (err instanceof Anthropic.RateLimitError) {
+              console.error("Agent error: rate limited by the Claude API after retries.");
+            } else if (err instanceof Anthropic.APIError) {
+              console.error(`Agent error: Claude API ${err.status}: ${err.message}`);
+            } else {
+              console.error("Agent error:", err);
+            }
             process.exit(1);
           });
           NODE
@@ -979,15 +940,13 @@ jobs:
 
           echo "Preparing PR information..."
 
-          if [ -f gemini-output.md ]; then
-            cp gemini-output.md "$RUNNER_TEMP/pr-body.md"
-          elif [ -f claude-output.md ]; then
+          if [ -f claude-output.md ]; then
             cp claude-output.md "$RUNNER_TEMP/pr-body.md"
           elif [ -f codex-output.md ]; then
             cp codex-output.md "$RUNNER_TEMP/pr-body.md"
           else
             cat > "$RUNNER_TEMP/pr-body.md" <<'EOF'
-          Gemini AI agent completed the implementation.
+          Claude AI agent completed the implementation.
 
           See the commit changes and workflow logs for validation details.
           EOF
@@ -995,7 +954,6 @@ jobs:
 
           # These files are workflow-only and must never be committed.
           rm -f .ai-task.md
-          rm -f gemini-output.md
           rm -f claude-output.md
           rm -f codex-output.md
 
