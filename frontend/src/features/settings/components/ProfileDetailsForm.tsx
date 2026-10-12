@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Camera, CheckCircle2, Mail, Phone, Briefcase, User as UserIcon } from 'lucide-react';
 import type { UserAccountSettingsProfile } from '../types';
+import { EMAIL_PLACEHOLDER, PHONE_PLACEHOLDER } from '@/lib/placeholders';
 
 export interface ProfileDetailsFormProps {
   profile: UserAccountSettingsProfile;
@@ -116,7 +117,7 @@ export const ProfileDetailsForm: React.FC<ProfileDetailsFormProps> = ({
             <Mail className="h-4 w-4 text-muted-foreground" /> Account Email Address
           </Label>
           <div className="relative">
-            <Input
+            <Input placeholder={EMAIL_PLACEHOLDER}
               id="profile-email"
               value={profile.email}
               disabled
@@ -143,7 +144,7 @@ export const ProfileDetailsForm: React.FC<ProfileDetailsFormProps> = ({
             id="profile-phone"
             value={profile.phone || ''}
             onChange={(e) => onChange({ phone: e.target.value })}
-            placeholder="+1 (555) 019-2834"
+            placeholder={PHONE_PLACEHOLDER}
             className="rounded-lg"
           />
           <p className="text-[11px] text-muted-foreground">

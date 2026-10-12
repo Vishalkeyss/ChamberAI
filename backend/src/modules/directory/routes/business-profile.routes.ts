@@ -6,6 +6,7 @@ import { BusinessProfileService } from '../services/business-profile.service';
 import {
   updateBusinessProfileSchema,
   inviteRepresentativeSchema,
+  updateRepresentativeSchema,
 } from '../validation/business-profile.validation';
 import { successResponse } from '../../../core/shared/response';
 import { AppError, ErrorCodes } from '../../../core/shared/errors';
@@ -91,6 +92,10 @@ businessProfileRoutes.post('/member/business-profile/logo', requireRole(allowedR
   } else {
     // Direct binary or JSON base64
     const body = await c.req.json().catch(() => ({}));
+    // Reject oversized base64 before decoding (~4/3 of the 8MB max decoded size).
+    if (typeof body.dataUrl === 'string' && body.dataUrl.length > 11 * 1024 * 1024) {
+      throw new AppError(ErrorCodes.BAD_REQUEST, 'File too large', 400);
+    }
     if (body.dataUrl) {
       const parts = body.dataUrl.split(';base64,');
       mimeType = parts[0]?.replace('data:', '') || 'image/png';
@@ -239,7 +244,15 @@ businessProfileRoutes.patch('/member/team/:id', requireRole(allowedRoles), async
   }
 
   const body = await c.req.json().catch(() => ({}));
-  const result = await BusinessProfileService.updateRepresentative(c, chamberId, user.id, memberRecordId, body);
+  const parsed = updateRepresentativeSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new AppError(
+      ErrorCodes.VALIDATION_ERROR,
+      parsed.error.issues[0]?.message || 'Invalid representative data',
+      400
+    );
+  }
+  const result = await BusinessProfileService.updateRepresentative(c, chamberId, user.id, memberRecordId, parsed.data);
   const requestId = c.get('requestId');
   return c.json(successResponse(result, { requestId }));
 });

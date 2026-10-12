@@ -1,4 +1,4 @@
-import { generatePrefixedId } from '../../../core/shared/crypto';
+import { newId } from '../../../core/shared/ids';
 
 export interface CanonicalPreferenceItem {
   category: 'announcements' | 'events' | 'invoices' | 'referrals' | 'messages';
@@ -41,7 +41,7 @@ export class NotificationPreferencesRepository {
       .first<DbNotificationPreferencesRow>();
 
     if (!row) {
-      const id = generatePrefixedId('np');
+      const id = await newId(db, 'notification_preferences', 'NPREF', { chamberId });
       await db
         .prepare(
           `INSERT INTO notification_preferences (

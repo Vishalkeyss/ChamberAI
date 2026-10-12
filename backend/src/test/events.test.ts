@@ -114,6 +114,27 @@ function createSqliteD1() {
       qty_sold INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE event_registrations (
+      id TEXT PRIMARY KEY,
+      chamber_id TEXT NOT NULL REFERENCES platform_chambers(id),
+      event_id TEXT NOT NULL REFERENCES events(id),
+      user_id TEXT REFERENCES users(id),
+      ticket_type_id TEXT,
+      guest_name TEXT,
+      guest_email TEXT,
+      registration_type TEXT NOT NULL DEFAULT 'member',
+      promo_code_id TEXT,
+      amount_paid REAL NOT NULL DEFAULT 0.0,
+      discount_amount REAL NOT NULL DEFAULT 0.0,
+      payment_status TEXT DEFAULT 'paid',
+      payment_method_id TEXT,
+      check_in_status TEXT DEFAULT 'not_checked_in',
+      checked_in_at TEXT,
+      is_waitlisted INTEGER NOT NULL DEFAULT 0,
+      waitlist_position INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   return {

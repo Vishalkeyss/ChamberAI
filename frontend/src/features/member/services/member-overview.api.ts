@@ -1,3 +1,4 @@
+import { apiUrl } from '@/core/api/base';
 export interface OnboardingSteps {
   profile: boolean;
   card: boolean;
@@ -42,7 +43,7 @@ function getAuthHeaders(): HeadersInit {
  * Fetches personal dashboard KPI metrics and onboarding state.
  */
 export async function fetchMemberOverview(): Promise<MemberOverviewData> {
-  const res = await fetch('/api/v1/member/overview', {
+  const res = await fetch(apiUrl('/api/v1/member/overview'), {
     method: 'GET',
     headers: getAuthHeaders(),
   });
@@ -66,7 +67,7 @@ export async function fetchMemberOverview(): Promise<MemberOverviewData> {
 export async function completeOnboardingStep(
   stepKey: keyof OnboardingSteps
 ): Promise<{ completionPct: number; isComplete: boolean }> {
-  const res = await fetch('/api/v1/member/onboarding/complete-step', {
+  const res = await fetch(apiUrl('/api/v1/member/onboarding/complete-step'), {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify({ stepKey }),

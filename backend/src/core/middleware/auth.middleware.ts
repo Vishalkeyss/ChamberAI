@@ -10,14 +10,9 @@ export async function requireAuth(c: AppContext, next: () => Promise<void>) {
   let token = '';
   const authHeader = c.req.header('Authorization');
 
+  // Bearer header only: tokens in URLs leak via logs, history and Referer headers.
   if (authHeader && authHeader.startsWith('Bearer ')) {
     token = authHeader.substring(7).trim();
-  } else {
-    // Allow query parameter token for direct downloads / print links opened in browser
-    const queryToken = c.req.query('token');
-    if (queryToken) {
-      token = queryToken.trim();
-    }
   }
 
   if (!token) {

@@ -280,7 +280,7 @@ describe('Prompt 04.2: Admin 9-Tab Event Details & Scoped Sub-Admin View', () =>
         Host: 'austin.121meet.ai',
         Authorization: `Bearer ${sessionToken}`,
       },
-    }, { DB: d1, KV: kv, PLATFORM_DOMAIN: '121meet.ai' } as any);
+    }, { DB: d1, KV: kv, ENVIRONMENT: 'test', PLATFORM_DOMAIN: '121meet.ai' } as any);
 
     const json = await res.json() as any;
     if (res.status !== 200) {
@@ -326,7 +326,7 @@ describe('Prompt 04.2: Admin 9-Tab Event Details & Scoped Sub-Admin View', () =>
         Host: 'austin.121meet.ai',
         Authorization: `Bearer ${sessionToken}`,
       },
-    }, { DB: d1, KV: kv, PLATFORM_DOMAIN: '121meet.ai' } as any);
+    }, { DB: d1, KV: kv, ENVIRONMENT: 'test', PLATFORM_DOMAIN: '121meet.ai' } as any);
 
     assert.equal(res.status, 200);
   });
@@ -361,7 +361,7 @@ describe('Prompt 04.2: Admin 9-Tab Event Details & Scoped Sub-Admin View', () =>
         Host: 'austin.121meet.ai',
         Authorization: `Bearer ${sessionToken}`,
       },
-    }, { DB: d1, KV: kv, PLATFORM_DOMAIN: '121meet.ai' } as any);
+    }, { DB: d1, KV: kv, ENVIRONMENT: 'test', PLATFORM_DOMAIN: '121meet.ai' } as any);
 
     assert.equal(res.status, 403);
     const json = await res.json() as any;
@@ -400,7 +400,7 @@ describe('Prompt 04.2: Admin 9-Tab Event Details & Scoped Sub-Admin View', () =>
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ isCheckedIn: true }),
-    }, { DB: d1, KV: kv, PLATFORM_DOMAIN: '121meet.ai' } as any);
+    }, { DB: d1, KV: kv, ENVIRONMENT: 'test', PLATFORM_DOMAIN: '121meet.ai' } as any);
 
     assert.equal(res.status, 200);
     const json = await res.json() as any;
@@ -437,7 +437,7 @@ describe('Prompt 04.2: Admin 9-Tab Event Details & Scoped Sub-Admin View', () =>
         Host: 'austin.121meet.ai',
         Authorization: `Bearer ${sessionToken}`,
       },
-    }, { DB: d1, KV: kv, PLATFORM_DOMAIN: '121meet.ai' } as any);
+    }, { DB: d1, KV: kv, ENVIRONMENT: 'test', PLATFORM_DOMAIN: '121meet.ai' } as any);
 
     assert.equal(res.status, 200);
     const json = await res.json() as any;
@@ -450,7 +450,7 @@ describe('Prompt 04.2: Admin 9-Tab Event Details & Scoped Sub-Admin View', () =>
         Host: 'austin.121meet.ai',
         Authorization: `Bearer ${sessionToken}`,
       },
-    }, { DB: d1, KV: kv, PLATFORM_DOMAIN: '121meet.ai' } as any);
+    }, { DB: d1, KV: kv, ENVIRONMENT: 'test', PLATFORM_DOMAIN: '121meet.ai' } as any);
 
     const ovJson = await ovRes.json() as any;
     assert.equal(ovJson.data.metrics.waitlistedCount, 0);

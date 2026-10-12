@@ -19,6 +19,7 @@ coverage/
 .env
 .env.*
 !.env.example
+!frontend/.env.staging
 .dev.vars
 .dev.vars.*
 !.dev.vars.example
@@ -48,3 +49,7 @@ Thumbs.db
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+PENDING_BUGS.md
+.claude/
+SESSION.md
+*.tsbuildinfo

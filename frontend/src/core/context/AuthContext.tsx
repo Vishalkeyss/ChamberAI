@@ -1,3 +1,4 @@
+import { apiUrl } from '@/core/api/base';
 import React, {
   createContext,
   useContext,
@@ -6,6 +7,7 @@ import React, {
   useCallback,
   useRef,
 } from 'react';
+import { queryClient } from '@/core/query/query-client';
 
 export type RoleIdentifier =
   | 'super_admin'
@@ -165,9 +167,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } else {
       localStorage.removeItem('auth_token');
+      localStorage.removeItem('session_token');
       localStorage.removeItem('auth_user');
       localStorage.removeItem('auth_roles');
       localStorage.removeItem('auth_chamber');
+      sessionStorage.removeItem('auth_token');
+      // Drop every cached server response so the next user never sees this user's data.
+      queryClient.clear();
     }
     setToken(newToken);
     setUser(newUser);
@@ -184,7 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const res = await fetch('/api/v1/auth/me', {
+      const res = await fetch(apiUrl('/api/v1/auth/me'), {
         headers: {
           Authorization: `Bearer ${currentToken}`,
           Accept: 'application/json',
@@ -259,7 +265,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const currentToken = token || localStorage.getItem('auth_token');
     if (currentToken) {
       try {
-        await fetch('/api/v1/auth/logout', {
+        await fetch(apiUrl('/api/v1/auth/logout'), {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${currentToken}`,
@@ -343,7 +349,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const currentToken = localStorage.getItem('auth_token');
     if (currentToken) {
       try {
-        const res = await fetch('/api/v1/auth/refresh', {
+        const res = await fetch(apiUrl('/api/v1/auth/refresh'), {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${currentToken}`,

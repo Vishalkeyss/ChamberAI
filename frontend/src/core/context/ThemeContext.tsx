@@ -1,3 +1,4 @@
+import { apiUrl } from '@/core/api/base';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { applyTheme, type Theme } from '../theme/injector';
 
@@ -90,7 +91,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const token = localStorage.getItem('auth_token');
       if (token) {
-        fetch('/api/v1/auth/me/preferences', {
+        fetch(apiUrl('/api/v1/auth/me/preferences'), {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
@@ -114,7 +115,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const token = localStorage.getItem('auth_token');
       if (token) {
-        fetch('/api/v1/auth/me/preferences', {
+        fetch(apiUrl('/api/v1/auth/me/preferences'), {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',

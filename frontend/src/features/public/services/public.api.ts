@@ -1,3 +1,4 @@
+import { apiUrl } from '@/core/api/base';
 import type { RegisteredChamber } from '../data/chambers';
 
 export interface ChambersResponse {
@@ -7,7 +8,7 @@ export interface ChambersResponse {
 
 export async function fetchPublicChambers(): Promise<RegisteredChamber[]> {
   try {
-    const res = await fetch('/api/v1/public/chambers', {
+    const res = await fetch(apiUrl('/api/v1/public/chambers'), {
       headers: {
         'Accept': 'application/json',
       },
@@ -25,7 +26,7 @@ export async function fetchPublicChambers(): Promise<RegisteredChamber[]> {
 
 export async function fetchChamberBySlug(slug: string): Promise<RegisteredChamber | null> {
   try {
-    const res = await fetch(`/api/v1/public/chambers/${encodeURIComponent(slug)}`, {
+    const res = await fetch(apiUrl(`/api/v1/public/chambers/${encodeURIComponent(slug)}`), {
       headers: {
         'Accept': 'application/json',
       },

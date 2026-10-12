@@ -1,5 +1,5 @@
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, and, sql, desc, asc, like, or } from 'drizzle-orm';
+import { eq, and, sql, desc, asc, or, type SQL, type SQLWrapper } from 'drizzle-orm';
 import {
   businessProfiles,
   chamberMemberships,
@@ -16,7 +16,12 @@ import type { DirectoryQueryParams } from '../validation/directory.validation';
  * Per Prompt 03.2 Section 8 spec.
  */
 export function sanitizeSearchQuery(query: string): string {
-  return query.trim().replace(/[%_]/g, '\\$&');
+  return query.trim().replace(/[\\%_]/g, '\\$&');
+}
+
+/** `column LIKE '%value%' ESCAPE '\'` — the ESCAPE clause makes sanitizeSearchQuery's escapes effective. */
+function containsLike(column: SQLWrapper, value: string): SQL {
+  return sql`${column} LIKE ${`%${sanitizeSearchQuery(value)}%`} ESCAPE '\\'`;
 }
 
 export interface PublicDirectoryBusinessItem {
@@ -44,8 +49,6 @@ export interface MemberDirectoryBusinessItem extends PublicDirectoryBusinessItem
     name: string | null;
     avatarUrl: string | null;
     email: string | null;
-    phone?: string | null;
-    jobTitle?: string | null;
   } | null;
 }
 
@@ -104,7 +107,7 @@ export class DirectoryRepository {
       conditions.push(
         or(
           eq(businessProfiles.industry, ind),
-          like(businessProfiles.industry, `%${ind}%`)
+          containsLike(businessProfiles.industry, ind)
         )!
       );
     }
@@ -114,8 +117,8 @@ export class DirectoryRepository {
       conditions.push(
         or(
           eq(businessProfiles.city, city),
-          like(businessProfiles.city, `%${city}%`),
-          like(businessProfiles.locationsJson, `%${city}%`)
+          containsLike(businessProfiles.city, city),
+          containsLike(businessProfiles.locationsJson, city)
         )!
       );
     }
@@ -134,14 +137,13 @@ export class DirectoryRepository {
     }
 
     if (params.q && params.q.trim()) {
-      const sanitized = sanitizeSearchQuery(params.q);
-      const searchLike = `%${sanitized}%`;
+      const q = params.q;
       conditions.push(
         or(
-          like(businessProfiles.businessName, searchLike),
-          like(businessProfiles.tagline, searchLike),
-          like(businessProfiles.description, searchLike),
-          like(businessProfiles.skillsJson, searchLike)
+          containsLike(businessProfiles.businessName, q),
+          containsLike(businessProfiles.tagline, q),
+          containsLike(businessProfiles.description, q),
+          containsLike(businessProfiles.skillsJson, q)
         )!
       );
     }
@@ -166,14 +168,16 @@ export class DirectoryRepository {
         and(
           eq(businessMembers.businessId, businessProfiles.id),
           eq(businessMembers.chamberId, chamberId),
-          eq(businessMembers.isPrimaryContact, 1)
+          eq(businessMembers.isPrimaryContact, 1),
+          eq(businessMembers.status, 'active')
         )
       )
       .leftJoin(
         users,
         and(
           eq(users.id, businessMembers.userId),
-          eq(users.chamberId, chamberId)
+          eq(users.chamberId, chamberId),
+          eq(users.status, 'active')
         )
       )
       .where(whereClause);
@@ -198,7 +202,6 @@ export class DirectoryRepository {
         primaryContactName: users.name,
         primaryContactAvatar: users.avatarUrl,
         primaryContactEmail: users.email,
-        primaryContactPhone: users.phone,
         primaryChapterId: users.primaryChapterId,
         chapterName: chapters.name,
         planName: membershipPlans.name,
@@ -218,14 +221,16 @@ export class DirectoryRepository {
         and(
           eq(businessMembers.businessId, businessProfiles.id),
           eq(businessMembers.chamberId, chamberId),
-          eq(businessMembers.isPrimaryContact, 1)
+          eq(businessMembers.isPrimaryContact, 1),
+          eq(businessMembers.status, 'active')
         )
       )
       .leftJoin(
         users,
         and(
           eq(users.id, businessMembers.userId),
-          eq(users.chamberId, chamberId)
+          eq(users.chamberId, chamberId),
+          eq(users.status, 'active')
         )
       )
       .leftJoin(
@@ -280,7 +285,6 @@ export class DirectoryRepository {
               name: row.primaryContactName || null,
               avatarUrl: row.primaryContactAvatar || null,
               email: row.primaryContactEmail || null,
-              phone: row.primaryContactPhone || null,
             }
           : null,
       };

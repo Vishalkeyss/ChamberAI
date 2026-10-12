@@ -3,6 +3,7 @@ import type { Env } from './core/env';
 import type { AppVariables } from './core/context';
 import { requestIdMiddleware } from './core/middleware/request-id';
 import { corsMiddleware } from './core/middleware/cors';
+import { configGuardMiddleware } from './core/middleware/config-guard';
 import { requireAuth, requireRole } from './core/middleware/auth.middleware';
 import { globalErrorHandler } from './core/middleware/error-handler';
 import { resolveChamberMiddleware } from './core/middleware/tenant-resolver';
@@ -25,7 +26,17 @@ import { memberBillingRoutes } from './modules/billing/routes/member-billing.rou
 import { businessProfileRoutes } from './modules/directory/routes/business-profile.routes';
 import { publicEventsRouter } from './modules/events/routes/public-events.routes';
 import { memberEventsRouter } from './modules/events/routes/member-events.routes';
+import { eventRegistrationRouter } from './modules/events/routes/event-registration.routes';
+import { adminEventsRouter } from './modules/events/routes/admin-events.routes';
 import { adminEventsTabsRouter } from './modules/events/routes/admin-events-tabs.routes';
+import { sponsorshipsRouter } from './modules/events/routes/sponsorships.routes';
+import { eventFeedbackRouter } from './modules/events/routes/feedback.routes';
+import { messagesRouter } from './modules/networking/routes/messages.routes';
+import { referralsRouter } from './modules/networking/routes/referrals.routes';
+import { businessCardRouter } from './modules/networking/routes/business-card.routes';
+import { crmRouter } from './modules/crm/routes/crm.routes';
+import { tasksRouter } from './modules/tasks/routes/tasks.routes';
+import { mentorshipRouter } from './modules/mentorship/routes/mentorship.routes';
 import { runMigrations, getMigrationHistory } from './core/db/migrator';
 import { successResponse } from './core/shared/response';
 
@@ -40,6 +51,9 @@ export function createApp() {
 
   // 3. Global Error Handler
   app.onError(globalErrorHandler);
+
+  // 3b. Required configuration for staging / production (core/config)
+  app.use('/api/v1/*', configGuardMiddleware);
 
   // 4. Rate Limiter (120 reqs/min for public access)
   app.use('/api/v1/*', createRateLimiter(120, 60));
@@ -67,7 +81,17 @@ export function createApp() {
   apiV1.route('/', businessProfileRoutes);
   apiV1.route('/', publicEventsRouter);
   apiV1.route('/', memberEventsRouter);
+  apiV1.route('/', eventRegistrationRouter);
+  apiV1.route('/', adminEventsRouter);
   apiV1.route('/', adminEventsTabsRouter);
+  apiV1.route('/', sponsorshipsRouter);
+  apiV1.route('/', eventFeedbackRouter);
+  apiV1.route('/', messagesRouter);
+  apiV1.route('/', referralsRouter);
+  apiV1.route('/', businessCardRouter);
+  apiV1.route('/', crmRouter);
+  apiV1.route('/', tasksRouter);
+  apiV1.route('/', mentorshipRouter);
 
   // Public Asset Delivery (Streams images/files from Cloudflare R2 / Miniflare STORAGE)
   apiV1.get('/public/assets/*', async (c) => {
@@ -83,6 +107,13 @@ export function createApp() {
     object.writeHttpMetadata(headers);
     headers.set('etag', object.httpEtag);
     headers.set('cache-control', 'public, max-age=31536000, immutable');
+    // Never let a stored object execute as a page in our origin (stored-XSS guard).
+    headers.set('x-content-type-options', 'nosniff');
+    headers.set('content-security-policy', "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
+    const storedType = (headers.get('content-type') || '').toLowerCase();
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(storedType)) {
+      headers.set('content-disposition', 'attachment');
+    }
     return new Response(object.body, { headers });
   });
 

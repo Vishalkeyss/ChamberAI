@@ -1,5 +1,6 @@
 import type { SubmitApplicationInput, ResubmitApplicationInput } from '../validation/applications.validation';
-import { generatePrefixedId, generateTrackingCode, generateSessionToken } from '../../../core/shared/crypto';
+import { generateTrackingCode, generateSessionToken, generateMemberDisplayId } from '../../../core/shared/crypto';
+import { newId } from '../../../core/shared/ids';
 
 export interface ApplicationRecord {
   id: string;
@@ -46,8 +47,8 @@ export class ApplicationsRepository {
     input: SubmitApplicationInput,
     autoApprove = false
   ): Promise<{ id: string; trackingCode: string; status: 'pending' | 'approved'; chargeResult?: ApprovalResult }> {
-    const id = generatePrefixedId('app');
-    const trackingCode = input.customTrackingCode ? input.customTrackingCode.trim().toUpperCase() : generateTrackingCode();
+    const id = await newId(db, 'applications', 'APP', { chamberId });
+    const trackingCode = await this.generateUniqueTrackingCode(db);
     const status: 'pending' | 'approved' = autoApprove ? 'approved' : 'pending';
     const kanbanStage = autoApprove ? 'approved' : 'new';
     const now = new Date().toISOString();
@@ -91,7 +92,7 @@ export class ApplicationsRepository {
       .first<{ id: string }>();
 
     if (adminUser?.id) {
-      const logId = generatePrefixedId('act');
+      const logId = await newId(db, 'activity_logs', 'ACT', { chamberId, suffixLength: 6, skipUniqueCheck: true });
       statements.push(
         db
           .prepare(
@@ -156,26 +157,23 @@ export class ApplicationsRepository {
       .bind(chamberId, normalizedCode)
       .first<any>();
 
-    // Fallback: If not found under current chamber, look up by globally unique tracking code
-    if (!row) {
-      row = await db
-        .prepare(
-          `SELECT a.*,
-                  p.name AS plan_name,
-                  p.accent_color AS plan_accent_color,
-                  p.price AS plan_price,
-                  p.pricing_basis AS plan_pricing_basis,
-                  c.name AS chapter_name
-           FROM applications a
-           LEFT JOIN membership_plans p ON a.plan_id = p.id
-           LEFT JOIN chapters c ON a.chapter_id = c.id
-           WHERE a.tracking_code = ?`
-        )
-        .bind(normalizedCode)
-        .first<any>();
-    }
-
     return row || null;
+  }
+
+  /**
+   * Generates a tracking code (CSPRNG) that does not collide with an existing one.
+   * tracking_code is globally UNIQUE in the canonical schema.
+   */
+  static async generateUniqueTrackingCode(db: D1Database, maxAttempts = 5): Promise<string> {
+    for (let i = 0; i < maxAttempts; i++) {
+      const code = generateTrackingCode();
+      const existing = await db
+        .prepare('SELECT id FROM applications WHERE tracking_code = ? LIMIT 1')
+        .bind(code)
+        .first<{ id: string }>();
+      if (!existing) return code;
+    }
+    throw new Error('Unable to generate a unique application tracking code');
   }
 
   /**
@@ -248,7 +246,7 @@ export class ApplicationsRepository {
       .first<{ id: string }>();
 
     if (adminUser?.id) {
-      const logId = generatePrefixedId('act');
+      const logId = await newId(db, 'activity_logs', 'ACT', { chamberId, suffixLength: 6, skipUniqueCheck: true });
       statements.push(
         db
           .prepare(
@@ -372,21 +370,24 @@ export class ApplicationsRepository {
       };
     }
 
-    const statements: D1PreparedStatement[] = [
-      db
-        .prepare(
-          `UPDATE applications
-           SET status = 'approved',
-               admin_notes = ?,
-               kanban_stage = 'approved',
-               updated_at = ?
-           WHERE chamber_id = ? AND id = ?`
-        )
-        .bind(adminNotes || null, now, chamberId, id),
-    ];
+    const failed: ApprovalResult = {
+      success: false,
+      charged: false,
+      chargedAmount: 0,
+      cardLastFour: null,
+      transactionId: null,
+      invoiceId: null,
+    };
+
+    // Rejected or already-provisioned applications can never be (re)approved.
+    if (app.status === 'rejected' || (app as { converted_user_id?: string | null }).converted_user_id) {
+      return failed;
+    }
+
+    const statements: D1PreparedStatement[] = [];
 
     if (adminUserId) {
-      const logId = generatePrefixedId('act');
+      const logId = await newId(db, 'activity_logs', 'ACT', { chamberId, suffixLength: 6, skipUniqueCheck: true });
       statements.push(
         db
           .prepare(
@@ -407,21 +408,15 @@ export class ApplicationsRepository {
 
     // 1. Provision or activate user
     const email = app.business_email.trim().toLowerCase();
-    let existingUser = await db
+    // Users are unique per (chamber_id, email): never match a user from another chamber.
+    const existingUser = await db
       .prepare('SELECT id, status FROM users WHERE email = ? AND chamber_id = ? LIMIT 1')
       .bind(email, app.chamber_id)
       .first<{ id: string; status: string }>();
 
-    if (!existingUser) {
-      existingUser = await db
-        .prepare('SELECT id, status FROM users WHERE email = ? LIMIT 1')
-        .bind(email)
-        .first<{ id: string; status: string }>();
-    }
-
     let userId = existingUser?.id;
     if (!userId) {
-      userId = generatePrefixedId('usr');
+      userId = await newId(db, 'users', 'USR', { chamberId });
       const token = generateSessionToken();
       statements.push(
         db
@@ -445,13 +440,17 @@ export class ApplicationsRepository {
     } else {
       statements.push(
         db
-          .prepare('UPDATE users SET status = "active", highest_role = "member", updated_at = ? WHERE id = ?')
-          .bind(now, userId)
+          // Keep any existing (higher) role; only activate the account.
+          .prepare(
+            `UPDATE users SET status = 'active', highest_role = COALESCE(highest_role, 'member'), updated_at = ?
+             WHERE id = ? AND chamber_id = ?`
+          )
+          .bind(now, userId, app.chamber_id)
       );
     }
 
     // 2. Role assignment for member
-    const uraId = generatePrefixedId('ura');
+    const uraId = await newId(db, 'user_role_assignments', 'URA', { chamberId });
     statements.push(
       db
         .prepare(
@@ -470,7 +469,7 @@ export class ApplicationsRepository {
     );
 
     // 3. Business profile
-    const bizId = generatePrefixedId('biz');
+    const bizId = await newId(db, 'business_profiles', 'BIZ', { chamberId });
     statements.push(
       db
         .prepare(
@@ -490,7 +489,7 @@ export class ApplicationsRepository {
     );
 
     // 4. Business member link
-    const bmId = generatePrefixedId('bm');
+    const bmId = await newId(db, 'business_members', 'BM', { chamberId });
     statements.push(
       db
         .prepare(
@@ -509,8 +508,8 @@ export class ApplicationsRepository {
     );
 
     // 5. Chamber membership
-    const cmId = generatePrefixedId('mbr');
-    const displayMemberId = `MEM-2026-${Math.floor(10000 + Math.random() * 90000)}`;
+    const cmId = await newId(db, 'chamber_memberships', 'MEM', { chamberId });
+    const displayMemberId = generateMemberDisplayId();
     statements.push(
       db
         .prepare(
@@ -531,12 +530,6 @@ export class ApplicationsRepository {
         )
     );
 
-    // 6. Update applications converted_user_id
-    statements.push(
-      db
-        .prepare('UPDATE applications SET converted_user_id = ?, updated_at = ? WHERE id = ?')
-        .bind(userId, now, id)
-    );
 
     // 7. Synchronize platform_chambers.members_count
     statements.push(
@@ -584,7 +577,7 @@ export class ApplicationsRepository {
     let paidAt: string | null = null;
 
     if (pm && pm.lastFour) {
-      pmId = generatePrefixedId('pm');
+      pmId = await newId(db, 'payment_methods', 'PM', { chamberId });
       statements.push(
         db
           .prepare(
@@ -599,27 +592,21 @@ export class ApplicationsRepository {
             userId,
             pm.brand || 'card',
             String(pm.lastFour),
-            pm.expiryMonth || 12,
-            pm.expiryYear || 2026,
-            pm.gatewayToken || generatePrefixedId('tok'),
+            pm.expiryMonth ?? null,
+            pm.expiryYear ?? null,
+            null, // No gateway integrated (OPEN DECISION): never store a fabricated or client-supplied token
             now
           )
       );
     }
 
-    const invId = generatePrefixedId('inv');
+    const invId = await newId(db, 'invoices', 'INV', { chamberId });
     const invoiceNumber = `INV-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
 
     if (planPrice > 0) {
-      if (pmId) {
-        // Pre-authorized card charged successfully upon approval
-        charged = true;
-        txnId = generatePrefixedId('txn');
-        invStatus = 'paid';
-        paidAt = now;
-      } else {
-        invStatus = 'unpaid';
-      }
+      // No payment gateway is integrated yet (OPEN DECISION): never mark dues as
+      // paid without a verified gateway charge. The invoice stays unpaid.
+      invStatus = 'unpaid';
     } else {
       // Complimentary / $0 plan
       invStatus = 'paid';
@@ -661,7 +648,7 @@ export class ApplicationsRepository {
     );
 
     if (charged) {
-      const chargeLogId = generatePrefixedId('act');
+      const chargeLogId = await newId(db, 'activity_logs', 'ACT', { chamberId, suffixLength: 6, skipUniqueCheck: true });
       statements.push(
         db
           .prepare(
@@ -685,7 +672,52 @@ export class ApplicationsRepository {
       );
     }
 
-    await db.batch(statements);
+    // Atomically claim the application: only one approval can win, and only from
+    // a non-rejected, not-yet-provisioned state. converted_user_id is NOT set here:
+    // it references users(id) and a new user only exists after the batch below.
+    const claim = await db
+      .prepare(
+        `UPDATE applications
+         SET kanban_stage = 'provisioning',
+             updated_at = ?
+         WHERE chamber_id = ? AND id = ?
+           AND converted_user_id IS NULL
+           AND kanban_stage IS NOT 'provisioning'
+           AND status IN ('pending', 'changes_requested', 'approved')`
+      )
+      .bind(now, chamberId, id)
+      .run();
+    if (!claim.meta?.changes) {
+      return failed;
+    }
+
+    // Finalize inside the same batch, after the user row has been inserted.
+    statements.push(
+      db
+        .prepare(
+          `UPDATE applications
+           SET status = 'approved',
+               admin_notes = ?,
+               kanban_stage = 'approved',
+               converted_user_id = ?,
+               updated_at = ?
+           WHERE chamber_id = ? AND id = ?`
+        )
+        .bind(adminNotes || null, userId, now, chamberId, id)
+    );
+
+    try {
+      await db.batch(statements);
+    } catch (err) {
+      await db
+        .prepare(
+          `UPDATE applications SET status = ?, kanban_stage = ?, admin_notes = ?, converted_user_id = NULL, updated_at = ?
+           WHERE chamber_id = ? AND id = ?`
+        )
+        .bind(app.status, app.kanban_stage, app.admin_notes, now, chamberId, id)
+        .run();
+      throw err;
+    }
 
     return {
       success: true,
@@ -729,7 +761,7 @@ export class ApplicationsRepository {
     ];
 
     if (adminUserId) {
-      const logId = generatePrefixedId('act');
+      const logId = await newId(db, 'activity_logs', 'ACT', { chamberId, suffixLength: 6, skipUniqueCheck: true });
       statements.push(
         db
           .prepare(
@@ -782,7 +814,7 @@ export class ApplicationsRepository {
     ];
 
     if (adminUserId) {
-      const logId = generatePrefixedId('act');
+      const logId = await newId(db, 'activity_logs', 'ACT', { chamberId, suffixLength: 6, skipUniqueCheck: true });
       statements.push(
         db
           .prepare(

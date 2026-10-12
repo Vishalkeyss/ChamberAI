@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:staging": "tsc -b && vite build --mode staging"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

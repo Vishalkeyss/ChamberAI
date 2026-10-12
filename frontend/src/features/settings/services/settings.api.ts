@@ -1,3 +1,4 @@
+import { apiUrl } from '@/core/api/base';
 import type {
   AccountSettingsData,
   NotificationPreferenceItem,
@@ -14,7 +15,7 @@ function getAuthHeaders(): HeadersInit {
 }
 
 export async function fetchAccountSettings(): Promise<AccountSettingsData> {
-  const res = await fetch('/api/v1/member/settings', {
+  const res = await fetch(apiUrl('/api/v1/member/settings'), {
     method: 'GET',
     headers: getAuthHeaders(),
   });
@@ -33,7 +34,7 @@ export async function updateProfile(data: {
   title?: string | null;
   phone?: string | null;
 }): Promise<{ message: string; user: Partial<UserAccountSettingsProfile> }> {
-  const res = await fetch('/api/v1/member/settings/profile', {
+  const res = await fetch(apiUrl('/api/v1/member/settings/profile'), {
     method: 'PUT',
     headers: getAuthHeaders(),
     body: JSON.stringify(data),
@@ -51,7 +52,7 @@ export async function updateProfile(data: {
 export async function updateNotificationPreferences(
   preferences: NotificationPreferenceItem[]
 ): Promise<{ message: string; updated_count: number }> {
-  const res = await fetch('/api/v1/member/settings/notifications', {
+  const res = await fetch(apiUrl('/api/v1/member/settings/notifications'), {
     method: 'PUT',
     headers: getAuthHeaders(),
     body: JSON.stringify({ preferences }),
@@ -67,7 +68,7 @@ export async function updateNotificationPreferences(
 }
 
 export async function revokeActiveSession(sessionId: string): Promise<{ revoked: boolean }> {
-  const res = await fetch(`/api/v1/member/settings/sessions/${encodeURIComponent(sessionId)}`, {
+  const res = await fetch(apiUrl(`/api/v1/member/settings/sessions/${encodeURIComponent(sessionId)}`), {
     method: 'DELETE',
     headers: getAuthHeaders(),
   });
@@ -85,7 +86,7 @@ export async function savePersonalApiKey(data: {
   provider: 'openai' | 'anthropic' | 'google';
   api_key: string;
 }): Promise<{ message: string; provider: string }> {
-  const res = await fetch('/api/v1/member/settings/api-key', {
+  const res = await fetch(apiUrl('/api/v1/member/settings/api-key'), {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(data),

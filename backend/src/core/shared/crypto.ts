@@ -102,6 +102,20 @@ export async function decryptData(encryptedPayload: string, secretKey: string): 
  */
 export function generateTrackingCode(): string {
   const year = new Date().getFullYear();
-  const randomSuffix = Math.floor(10000 + Math.random() * 90000);
+  const buf = new Uint32Array(1);
+  crypto.getRandomValues(buf);
+  const randomSuffix = 10000 + (buf[0] % 90000);
   return `APP-${year}-${randomSuffix}`;
+}
+
+/**
+ * Generates a public member display ID: MEM-<current year>-<8 CSPRNG digits>.
+ * Unique per chamber via UNIQUE(chamber_id, member_id_display).
+ */
+export function generateMemberDisplayId(): string {
+  const year = new Date().getFullYear();
+  const buf = new Uint32Array(1);
+  crypto.getRandomValues(buf);
+  const suffix = (10000000 + (buf[0] % 90000000)).toString();
+  return `MEM-${year}-${suffix}`;
 }

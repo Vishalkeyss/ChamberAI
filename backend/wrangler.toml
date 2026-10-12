@@ -11,9 +11,12 @@ compatibility_flags = ["nodejs_compat"]
 #  Wrangler reads `.dev.vars` automatically during `wrangler dev`.
 # =============================================================================
 
+# Runtime configuration is read only in src/core/config. Staging / production fail closed
+# (503) when PLATFORM_DOMAIN, CHAMBER_ENCRYPTION_KEY, EMAIL_FROM_ADDRESS, SENDGRID_API_KEY
+# or SENDGRID_OTP_TEMPLATE_ID is missing. See DEPLOYMENT.md.
 [vars]
 ENVIRONMENT   = "development"
-PLATFORM_DOMAIN = "121meet.com"
+PLATFORM_DOMAIN = "121meet.app"   # OD-006: slug.121meet.app (ARCHITECTURE_DOMAIN_WORKFLOW.md)
 
 # Local D1 — simulated by Miniflare
 [[d1_databases]]
@@ -39,7 +42,8 @@ bucket_name = "chamber-assets"
 #   TWILIO_AUTH_TOKEN         — SMS OTP (Auth Token)        [REQUIRED for phone login]
 #   TWILIO_FROM_NUMBER        — SMS sender number E.164     [REQUIRED for phone login]
 #   CHAMBER_ENCRYPTION_KEY    — AES-GCM 256-bit master key  [REQUIRED]
-#   JWT_SECRET                — Session signing secret      [REQUIRED]
+#   EMAIL_FROM_ADDRESS        — OTP sender address          [REQUIRED staging/prod]
+#   SENDGRID_OTP_TEMPLATE_ID  — SendGrid OTP template id    [REQUIRED staging/prod]
 #   STRIPE_SECRET_KEY         — Stripe platform default     [OPTIONAL]
 #   STRIPE_WEBHOOK_SECRET     — Stripe webhook HMAC         [OPTIONAL]
 #   RAZORPAY_KEY_ID           — Razorpay platform default   [OPTIONAL]
@@ -50,46 +54,52 @@ bucket_name = "chamber-assets"
 
 
 # =============================================================================
-#  STAGING  (used when you run `npx wrangler deploy --env staging`)
+#  STAGING  — Cloudflare free workers.dev address (no own domain)
 #
-#  Set secrets with: npx wrangler secret put <KEY> --env staging
+#  One Worker serves the built frontend (ASSETS) and the API (/api) on the same origin.
+#  workers.dev has no wildcard subdomains, so a chamber is opened by path:
+#    https://chamber-staging.<account>.workers.dev/c/<chamber-slug>
+#  and the frontend sends X-Chamber-Slug (ALLOW_TENANT_HEADER=true, staging only).
+#
+#  Deploy:   npm run deploy:staging        (builds frontend in staging mode first)
+#  Secrets:  see DEPLOYMENT.md  →  npx wrangler secret put <KEY> --env staging
 # =============================================================================
 
 [env.staging]
-name = "chamber-backend-staging"
+name       = "chamber-staging"
+workers_dev = true
 
 [env.staging.vars]
-ENVIRONMENT     = "staging"
-PLATFORM_DOMAIN = "121meet.com"
+ENVIRONMENT         = "staging"
+# Your workers.dev host, shown after the first deploy: chamber-staging.<account>.workers.dev
+PLATFORM_DOMAIN     = "chamber-staging.vishalpal.workers.dev"
+ALLOW_TENANT_HEADER = "true"
+
+[env.staging.assets]
+directory = "../frontend/dist"
+binding   = "ASSETS"
 
 [[env.staging.d1_databases]]
 binding        = "DB"
 database_name  = "chamber-d1-staging"
-database_id    = "REPLACE_WITH_STAGING_D1_DATABASE_ID"
+database_id    = "2f820f0d-591c-4245-ad4b-70d665916c39"
 migrations_dir = "db/migrations"
 
 [[env.staging.kv_namespaces]]
 binding = "KV"
-id      = "REPLACE_WITH_STAGING_KV_NAMESPACE_ID"
+id      = "98d421ecd90f4674aacb1d0b73fcd861"
 
-[[env.staging.r2_buckets]]
-binding     = "STORAGE"
-bucket_name = "chamber-assets-staging"
+# R2 is not enabled on the account yet (Cloudflare error 10042). Without it uploads return
+# "File storage is not configured". Enable R2 in the dashboard, create the bucket, then uncomment:
+# [[env.staging.r2_buckets]]
+# binding     = "STORAGE"
+# bucket_name = "chamber-assets-staging"
 
-# Secrets for staging — set via Cloudflare dashboard or wrangler CLI:
-#   npx wrangler secret put SENDGRID_API_KEY       --env staging
-#   npx wrangler secret put TWILIO_ACCOUNT_SID     --env staging
-#   npx wrangler secret put TWILIO_AUTH_TOKEN      --env staging
-#   npx wrangler secret put TWILIO_FROM_NUMBER     --env staging
-#   npx wrangler secret put CHAMBER_ENCRYPTION_KEY --env staging
-#   npx wrangler secret put JWT_SECRET             --env staging
-#   npx wrangler secret put STRIPE_SECRET_KEY      --env staging
-#   npx wrangler secret put STRIPE_WEBHOOK_SECRET  --env staging
-#   npx wrangler secret put RAZORPAY_KEY_ID        --env staging
-#   npx wrangler secret put RAZORPAY_KEY_SECRET    --env staging
-#   npx wrangler secret put OPENAI_API_KEY         --env staging
-#   npx wrangler secret put ANTHROPIC_API_KEY      --env staging
-#   npx wrangler secret put GOOGLE_AI_API_KEY      --env staging
+# Secrets for staging (OTP email via SendGrid Single Sender):
+#   npx wrangler secret put CHAMBER_ENCRYPTION_KEY   --env staging
+#   npx wrangler secret put SENDGRID_API_KEY         --env staging
+#   npx wrangler secret put EMAIL_FROM_ADDRESS       --env staging
+#   npx wrangler secret put SENDGRID_OTP_TEMPLATE_ID --env staging
 
 
 # =============================================================================
@@ -103,7 +113,7 @@ name = "chamber-backend-production"
 
 [env.production.vars]
 ENVIRONMENT     = "production"
-PLATFORM_DOMAIN = "121meet.com"
+PLATFORM_DOMAIN = "121meet.app"   # OD-006: slug.121meet.app (ARCHITECTURE_DOMAIN_WORKFLOW.md)
 
 [[env.production.d1_databases]]
 binding        = "DB"
@@ -119,10 +129,13 @@ id      = "REPLACE_WITH_PRODUCTION_KV_NAMESPACE_ID"
 binding     = "STORAGE"
 bucket_name = "chamber-assets"
 
-# Custom domain routing for production Worker
-[[env.production.routes]]
-pattern = "api.121meet.com/*"
-zone_name = "121meet.com"
+# Routing (OD-110, recommended): the Worker serves /api on every chamber host, same origin as
+# the frontend. Fill in once the domain is final, e.g.
+# Enable after the zone is on Cloudflare and OD-110 is confirmed. Custom chamber domains are
+# added through Cloudflare for SaaS (Custom Hostnames) and reach the same Worker.
+# [[env.production.routes]]
+# pattern   = "*.121meet.app/api/*"
+# zone_name = "121meet.app"
 
 # Secrets for production — set via Cloudflare dashboard or wrangler CLI:
 #   npx wrangler secret put SENDGRID_API_KEY       --env production
@@ -130,7 +143,8 @@ zone_name = "121meet.com"
 #   npx wrangler secret put TWILIO_AUTH_TOKEN      --env production
 #   npx wrangler secret put TWILIO_FROM_NUMBER     --env production
 #   npx wrangler secret put CHAMBER_ENCRYPTION_KEY --env production
-#   npx wrangler secret put JWT_SECRET             --env production
+#   npx wrangler secret put EMAIL_FROM_ADDRESS     --env production
+#   npx wrangler secret put SENDGRID_OTP_TEMPLATE_ID --env production
 #   npx wrangler secret put STRIPE_SECRET_KEY      --env production
 #   npx wrangler secret put STRIPE_WEBHOOK_SECRET  --env production
 #   npx wrangler secret put RAZORPAY_KEY_ID        --env production

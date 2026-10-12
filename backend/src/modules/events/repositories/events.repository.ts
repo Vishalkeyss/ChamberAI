@@ -1,10 +1,13 @@
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, sql, desc, asc, like, or, inArray } from 'drizzle-orm';
-import { events, chapters } from '../../../db/schema';
+import { events, chapters, eventTicketTypes, eventRegistrations } from '../../../db/schema';
 import type { EventsQueryParams } from '../validation/events.validation';
+import { POINT_REDEMPTION_VALUE } from '../services/event-registration.service';
 import {
   type EventListItem,
   type EventsListResponse,
+  type EventTicketTypeItem,
+  type MyEventRegistration,
   getEventCapacityStatus,
 } from '../types/events.types';
 
@@ -21,7 +24,9 @@ export class EventsRepository {
     chamberId: string,
     params: EventsQueryParams,
     viewerRole: 'guest' | 'member' | 'chapter_admin' | 'full_admin' = 'guest',
-    userScopeChapterId?: string | null
+    userScopeChapterId?: string | null,
+    /** When set, each event carries this user's own registration (myRegistration). */
+    viewerUserId?: string | null
   ): Promise<EventsListResponse> {
     const db = drizzle(d1);
     const {
@@ -167,6 +172,59 @@ export class EventsRepository {
       .limit(limit)
       .offset(offset);
 
+    // Ticket tiers for the listed events (one query, tenant-scoped)
+    const eventIds = rows.map((r) => r.event.id);
+    const ticketRows = eventIds.length
+      ? await db
+          .select()
+          .from(eventTicketTypes)
+          .where(and(eq(eventTicketTypes.chamberId, chamberId), inArray(eventTicketTypes.eventId, eventIds)))
+          .orderBy(asc(eventTicketTypes.price), asc(eventTicketTypes.createdAt))
+      : [];
+    const ticketsByEvent = new Map<string, EventTicketTypeItem[]>();
+    for (const t of ticketRows) {
+      const list = ticketsByEvent.get(t.eventId) || [];
+      list.push({
+        id: t.id,
+        name: t.name,
+        description: t.description,
+        price: t.price,
+        allowPayLater: t.allowPayLater,
+        qtyLimit: t.qtyLimit,
+        qtyRemaining: t.qtyLimit != null ? Math.max(0, t.qtyLimit - t.qtySold) : null,
+      });
+      ticketsByEvent.set(t.eventId, list);
+    }
+
+    // The viewer's own registrations for the listed events (tenant + user scoped).
+    const myRegByEvent = new Map<string, MyEventRegistration>();
+    if (viewerUserId && eventIds.length) {
+      const regs = await db
+        .select({
+          eventId: eventRegistrations.eventId,
+          isWaitlisted: eventRegistrations.isWaitlisted,
+          waitlistPosition: eventRegistrations.waitlistPosition,
+          paymentStatus: eventRegistrations.paymentStatus,
+          checkInStatus: eventRegistrations.checkInStatus,
+        })
+        .from(eventRegistrations)
+        .where(
+          and(
+            eq(eventRegistrations.chamberId, chamberId),
+            eq(eventRegistrations.userId, viewerUserId),
+            inArray(eventRegistrations.eventId, eventIds)
+          )
+        );
+      for (const r of regs) {
+        myRegByEvent.set(r.eventId, {
+          status: r.isWaitlisted ? 'waitlisted' : 'confirmed',
+          waitlistPosition: r.isWaitlisted ? r.waitlistPosition : null,
+          paymentStatus: r.paymentStatus,
+          checkedIn: r.checkInStatus === 'checked_in',
+        });
+      }
+    }
+
     const data: EventListItem[] = rows.map(({ event: e, chapterName }) => {
       const isVirtualResolved =
         (e.venue && e.venue.toLowerCase().includes('virtual')) ||
@@ -211,6 +269,9 @@ export class EventsRepository {
         status: e.status,
         isSoldOut: capacity.isSoldOut,
         spotsRemaining: capacity.spotsRemaining,
+        allowNonMemberRegistration: e.allowNonMemberRegistration,
+        ticketTypes: ticketsByEvent.get(e.id) || [],
+        ...(viewerUserId ? { myRegistration: myRegByEvent.get(e.id) || null } : {}),
       };
     });
 
@@ -223,6 +284,7 @@ export class EventsRepository {
         page,
         limit,
         totalPages,
+        pointRedemptionValue: POINT_REDEMPTION_VALUE,
       },
     };
   }

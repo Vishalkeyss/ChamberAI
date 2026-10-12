@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { toast } from 'sonner';
+import { useAuth } from '@/hooks/useAuth';
 import {
   ChevronLeft,
   ChevronRight,
@@ -10,7 +12,10 @@ import { BusinessCard } from '../components/BusinessCard';
 import { PublicBusinessCard } from '../components/PublicBusinessCard';
 import { ViewProfileModal } from '../components/ViewProfileModal';
 import { GuestJoinModal } from '../components/GuestJoinModal';
-import { QuickMessageModal } from '../components/QuickMessageModal';
+import { QuickChatDrawer } from '../../networking/components/QuickChatDrawer';
+import { AddContactModal } from '../../crm/components/AddContactModal';
+import type { CrmContactInput } from '../../crm/services/crm.api';
+import type { NetworkMember } from '../../networking/services/networking.api';
 import { BookMeetingModal } from '../components/BookMeetingModal';
 import {
   fetchDirectoryListings,
@@ -25,6 +30,8 @@ export interface DirectoryPageProps {
   chamberName?: string;
   chamberSlug?: string;
   onNavigateToPlans?: () => void;
+  /** Opens the full Messages inbox on a thread (member mode). */
+  onOpenMessages?: (partnerId: string) => void;
 }
 
 export const DirectoryPage: React.FC<DirectoryPageProps> = ({
@@ -32,17 +39,21 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
   chamberName,
   chamberSlug,
   onNavigateToPlans,
+  onOpenMessages,
 }) => {
   // State
   const [businesses, setBusinesses] = useState<DirectoryBusiness[]>([]);
   const [meta, setMeta] = useState<DirectoryMeta>({ page: 1, limit: 12, total: 0, totalPages: 0 });
   const [filters, setFilters] = useState<DirectoryFilters>({ industries: [], cities: [], chapters: [] });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   // Filter state
-  const [searchQuery, setSearchQuery] = useState('');
+  // ?q= pre-fills the search (e.g. "View Business Profile" from Messages).
+  const [searchQuery, setSearchQuery] = useState(() =>
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('q') || '' : ''
+  );
   const [selectedIndustry, setSelectedIndustry] = useState('');
-  const [selectedPlan, setSelectedPlan] = useState('');
   const [selectedCity, setSelectedCity] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -50,12 +61,14 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
   const [selectedBusiness, setSelectedBusiness] = useState<DirectoryBusiness | null>(null);
   const [isViewProfileOpen, setIsViewProfileOpen] = useState(false);
   const [isGuestJoinOpen, setIsGuestJoinOpen] = useState(false);
-  const [isQuickMessageOpen, setIsQuickMessageOpen] = useState(false);
+  const [chatPartner, setChatPartner] = useState<NetworkMember | null>(null);
+  const [crmPrefill, setCrmPrefill] = useState<Partial<CrmContactInput> | null>(null);
   const [isBookMeetingOpen, setIsBookMeetingOpen] = useState(false);
 
   // Debounce ref
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMemberMode = mode === 'member';
+  const { user } = useAuth();
 
   // Load filter options on mount or chamber change
   useEffect(() => {
@@ -65,9 +78,14 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
   }, [chamberSlug]);
 
   // Fetch directory listings
+  // Latest request wins: a slower earlier response must not overwrite newer results.
+  const requestSeqRef = useRef(0);
+
   const fetchListings = useCallback(
     async (page: number = 1) => {
+      const seq = ++requestSeqRef.current;
       setLoading(true);
+      setLoadError(false);
       try {
         const result = await fetchDirectoryListings(
           {
@@ -81,25 +99,20 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
           isMemberMode
         );
 
-        let filteredBusinesses = result.businesses;
-
-        // Dynamic plan filtering if user picked a plan
-        if (selectedPlan && selectedPlan.trim()) {
-          filteredBusinesses = filteredBusinesses.filter(
-            (b) => b.planName && b.planName.toLowerCase() === selectedPlan.toLowerCase()
-          );
-        }
-
-        setBusinesses(filteredBusinesses);
-        setMeta({
-          ...result.meta,
-          total: selectedPlan ? filteredBusinesses.length : result.meta.total,
-        });
+        if (seq !== requestSeqRef.current) return;
+        setBusinesses(result.businesses);
+        setMeta(result.meta);
+      } catch (err) {
+        if (seq !== requestSeqRef.current) return;
+        console.error('Error fetching directory listings:', err);
+        setBusinesses([]);
+        setMeta({ page: 1, limit: 12, total: 0, totalPages: 0 });
+        setLoadError(true);
       } finally {
-        setLoading(false);
+        if (seq === requestSeqRef.current) setLoading(false);
       }
     },
-    [searchQuery, selectedIndustry, selectedCity, selectedPlan, chamberSlug, isMemberMode]
+    [searchQuery, selectedIndustry, selectedCity, chamberSlug, isMemberMode]
   );
 
   // Debounced search trigger (300ms)
@@ -112,7 +125,7 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [searchQuery, selectedIndustry, selectedCity, selectedPlan]);
+  }, [fetchListings]);
 
   // Pagination handler
   const handlePageChange = (page: number) => {
@@ -126,7 +139,6 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
     setSearchQuery('');
     setSelectedIndustry('');
     setSelectedCity('');
-    setSelectedPlan('');
     setCurrentPage(1);
   };
 
@@ -134,7 +146,23 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
   const handleSendMessage = (business: DirectoryBusiness) => {
     setSelectedBusiness(business);
     if (isMemberMode) {
-      setIsQuickMessageOpen(true);
+      const contact = business.primaryContact;
+      if (!contact) {
+        toast.error('This business has no active representative to message yet');
+        return;
+      }
+      if (contact.id === user?.id) {
+        toast.info('This is your own business profile');
+        return;
+      }
+      setChatPartner({
+        id: contact.id,
+        name: contact.name || business.name,
+        avatarUrl: contact.avatarUrl,
+        businessId: business.id,
+        companyName: business.name,
+        industry: business.industry,
+      });
     } else {
       setIsGuestJoinOpen(true);
     }
@@ -175,8 +203,6 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
         onSearchChange={setSearchQuery}
         selectedIndustry={selectedIndustry}
         onIndustryChange={setSelectedIndustry}
-        selectedPlan={selectedPlan}
-        onPlanChange={setSelectedPlan}
         selectedCity={selectedCity}
         onCityChange={setSelectedCity}
         filters={filters}
@@ -219,6 +245,22 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
               </div>
             </div>
           ))}
+        </div>
+      ) : loadError ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center rounded-2xl border border-dashed border-gray-200 dark:border-border bg-white dark:bg-card p-8">
+          <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">
+            Couldn't load the directory
+          </h3>
+          <p className="text-xs text-gray-500 max-w-sm mb-4">
+            Something went wrong while fetching businesses. Please try again.
+          </p>
+          <button
+            type="button"
+            onClick={() => fetchListings(currentPage)}
+            className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#0B1E3B] text-white hover:bg-[#102A43] transition cursor-pointer shadow-xs"
+          >
+            Retry
+          </button>
         </div>
       ) : businesses.length === 0 ? (
         /* Empty State */
@@ -315,6 +357,26 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
         business={selectedBusiness}
         onSendMessage={handleSendMessage}
         onBookMeeting={handleBookMeeting}
+        onAddToCrm={
+          isMemberMode
+            ? (b) =>
+                setCrmPrefill({
+                  name: b.primaryContact?.name || b.name,
+                  company_name: b.name,
+                  email: b.primaryContact?.email || null,
+                  phone: b.primaryContact?.phone || b.phone || null,
+                  // Linked member only when it is someone else (OD-083).
+                  linked_user_id: b.primaryContact && b.primaryContact.id !== user?.id ? b.primaryContact.id : null,
+                })
+            : undefined
+        }
+      />
+
+      <AddContactModal
+        open={!!crmPrefill}
+        prefill={crmPrefill}
+        sourceLabel="From the chamber directory"
+        onClose={() => setCrmPrefill(null)}
       />
 
       {/* Guest Join Prompt Modal */}
@@ -326,11 +388,12 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
         onExplorePlans={onNavigateToPlans}
       />
 
-      {/* Quick Direct Message Modal */}
-      <QuickMessageModal
-        isOpen={isQuickMessageOpen}
-        onClose={() => setIsQuickMessageOpen(false)}
-        business={selectedBusiness}
+      {/* Prompt 05.2 §5.2 quick chat drawer */}
+      <QuickChatDrawer
+        open={!!chatPartner}
+        partner={chatPartner}
+        onClose={() => setChatPartner(null)}
+        onOpenInbox={onOpenMessages}
       />
 
       {/* 1:1 Meeting Scheduler Modal */}

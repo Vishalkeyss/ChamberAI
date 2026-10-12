@@ -140,14 +140,40 @@ export interface EventFeedbackItem {
   createdAt: string;
 }
 
+export type SponsorStatus = 'paid' | 'pending' | 'overdue';
+
 export interface EventSponsorItem {
   id: string;
   sponsorName: string;
+  businessId: string | null;
+  logoUrl: string | null;
+  website: string | null;
   tierId: string | null;
-  tierName?: string | null;
+  tierName: string | null;
   amount: number;
-  status: string;
+  status: SponsorStatus;
   paymentDate: string | null;
+  createdAt: string;
+}
+
+export interface AdminSponsorshipTier {
+  id: string;
+  tierName: string;
+  amount: number;
+  benefits: string[];
+  maxSponsors: number | null;
+  sponsorsCount: number;
+  spotsRemaining: number | null;
+  isSoldOut: boolean;
+}
+
+/** Prompt 04.4 — Tab 6 data: tiers, sponsors, revenue summary and what the caller may do. */
+export interface AdminSponsorsOverview {
+  currency: string | null;
+  permissions: { canRecord: boolean; canUpdateStatus: boolean; canRemove: boolean };
+  summary: { totalCommitted: number; totalPaid: number; totalOutstanding: number; sponsorCount: number };
+  tiers: AdminSponsorshipTier[];
+  sponsors: EventSponsorItem[];
 }
 
 /**
@@ -296,18 +322,174 @@ export async function fetchAdminEventFeedback(
 }
 
 /**
- * Fetch event sponsors
+ * Fetch event sponsors (Prompt 04.4 Tab 6)
  */
-export async function fetchAdminEventSponsors(
+export function fetchAdminEventSponsors(eventId: string, chamberSlug?: string): Promise<AdminSponsorsOverview> {
+  return adminRequest(`/api/v1/admin/events/${eventId}/sponsors`, {}, chamberSlug);
+}
+
+/** Offline booking: an external sponsor by name (or a member business id). */
+export function recordAdminSponsor(
+  eventId: string,
+  input: { tierId: string; sponsorName?: string; businessId?: string; amount?: number; status: SponsorStatus; paymentDate?: string },
+  chamberSlug?: string
+): Promise<{ sponsorId: string }> {
+  return adminRequest(`/api/v1/admin/events/${eventId}/sponsors`, { method: 'POST', body: JSON.stringify(input) }, chamberSlug);
+}
+
+export function updateAdminSponsorStatus(
+  eventId: string,
+  sponsorId: string,
+  input: { status: SponsorStatus; paymentDate?: string },
+  chamberSlug?: string
+): Promise<{ sponsorId: string }> {
+  return adminRequest(
+    `/api/v1/admin/events/${eventId}/sponsors/${sponsorId}`,
+    { method: 'PATCH', body: JSON.stringify(input) },
+    chamberSlug
+  );
+}
+
+export function removeAdminSponsor(eventId: string, sponsorId: string, chamberSlug?: string): Promise<{ removed: boolean }> {
+  return adminRequest(`/api/v1/admin/events/${eventId}/sponsors/${sponsorId}`, { method: 'DELETE' }, chamberSlug);
+}
+
+// ---------------------------------------------------------------------------
+// Prompt 04.6 — Admin Event Creation Wizard
+// ---------------------------------------------------------------------------
+
+export interface EventTicketTypeForm {
+  id?: string;
+  name: string;
+  price: number;
+  description: string | null;
+  allowPayLater: boolean;
+  qtyLimit: number | null;
+  /** read-only, returned when editing */
+  qtySold?: number;
+}
+
+export interface EventSponsorshipTierForm {
+  id?: string;
+  tierName: string;
+  amount: number;
+  benefits: string[];
+  /** null = unlimited (Prompt 04.4) */
+  maxSponsors: number | null;
+  /** read-only, returned when editing */
+  sponsorCount?: number;
+}
+
+export interface EventPromoCodeForm {
+  id?: string;
+  code: string;
+  discountType: 'percentage' | 'flat';
+  discountValue: number;
+  maxUses: number | null;
+  isActive: boolean;
+  /** read-only, returned when editing */
+  usedCount?: number;
+}
+
+export interface EventRecurrenceForm {
+  freq: 'daily' | 'weekly' | 'monthly';
+  interval: number;
+  weekdays: number[];
+  endType: 'after' | 'on';
+  count?: number;
+  until?: string;
+  tzOffsetMinutes: number;
+}
+
+export interface AdminEventFormPayload {
+  title: string;
+  category: string;
+  visibility: 'public' | 'staff_only';
+  eventDate: string;
+  eventEndDate: string | null;
+  city: string | null;
+  venue: string;
+  chapterId: string | null;
+  groupId: string | null;
+  tableArrangement: string | null;
+  numTables: number | null;
+  maxCapacity: number | null;
+  isPaid: boolean;
+  registrationFee: number;
+  allowNonMemberRegistration: boolean;
+  nonMemberFee: number | null;
+  description: string | null;
+  videoUrl: string | null;
+  photos: string[];
+  promoteFacebook: boolean;
+  promoteMeetup: boolean;
+  promoteEventbrite: boolean;
+  ticketTypes: EventTicketTypeForm[];
+  sponsorshipTiers: EventSponsorshipTierForm[];
+  promoCodes: EventPromoCodeForm[];
+  recurrence?: EventRecurrenceForm | null;
+  applyToSeries?: boolean;
+}
+
+export interface AdminEventEditData extends AdminEventFormPayload {
+  id: string;
+  status: string;
+  registeredCount: number;
+  series: { total: number; recurrenceLabel: string | null } | null;
+}
+
+export interface EventFormOptions {
+  chapters: { id: string; name: string }[];
+  groups: { id: string; name: string }[];
+  categories: string[];
+  cities: string[];
+  defaultCity: string | null;
+  lockedChapterId: string | null;
+}
+
+async function adminRequest<T>(path: string, init: RequestInit = {}, chamberSlug?: string): Promise<T> {
+  const headers = getAuthHeaders(chamberSlug);
+  if (init.body instanceof FormData) delete headers['Content-Type'];
+  const res = await fetch(`${API_BASE}${path}`, { ...init, headers: { ...headers, ...(init.headers || {}) } });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(json.error?.message || json.message || `Request failed (${res.status})`);
+  }
+  return json.data as T;
+}
+
+export function fetchEventFormOptions(chamberSlug?: string): Promise<EventFormOptions> {
+  return adminRequest('/api/v1/admin/events/form-options', {}, chamberSlug);
+}
+
+export function fetchAdminEventForEdit(eventId: string, chamberSlug?: string): Promise<AdminEventEditData> {
+  return adminRequest(`/api/v1/admin/events/${eventId}`, {}, chamberSlug);
+}
+
+export function createAdminEvent(
+  payload: AdminEventFormPayload,
+  chamberSlug?: string
+): Promise<{ id: string; title: string; status: string; occurrenceIds: string[]; recurrenceLabel: string | null }> {
+  return adminRequest('/api/v1/admin/events', { method: 'POST', body: JSON.stringify(payload) }, chamberSlug);
+}
+
+export function updateAdminEvent(
+  eventId: string,
+  payload: AdminEventFormPayload,
+  chamberSlug?: string
+): Promise<{ id: string; updatedAt: string; updatedOccurrences: number }> {
+  return adminRequest(`/api/v1/admin/events/${eventId}`, { method: 'PUT', body: JSON.stringify(payload) }, chamberSlug);
+}
+
+export function deleteAdminEvent(
   eventId: string,
   chamberSlug?: string
-): Promise<EventSponsorItem[]> {
-  const url = `${API_BASE}/api/v1/admin/events/${eventId}/sponsors`;
-  const headers = getAuthHeaders(chamberSlug);
-  const res = await fetch(url, { headers });
-  if (!res.ok) {
-    return [];
-  }
-  const json = await res.json();
-  return json.data || [];
+): Promise<{ id: string; deleted: boolean; status: string }> {
+  return adminRequest(`/api/v1/admin/events/${eventId}`, { method: 'DELETE' }, chamberSlug);
+}
+
+export function uploadEventPhoto(file: File, chamberSlug?: string): Promise<{ url: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  return adminRequest('/api/v1/admin/events/photos', { method: 'POST', body: form }, chamberSlug);
 }

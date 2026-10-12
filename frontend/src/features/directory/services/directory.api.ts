@@ -1,3 +1,4 @@
+import { apiUrl } from '@/core/api/base';
 /**
  * Member & Public Business Directory API Service
  * Supports public search & filtering and authenticated member directory with representative connect details.
@@ -156,7 +157,7 @@ export async function fetchDirectoryListings(
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const res = await fetch(url, { headers });
+    const res = await fetch(apiUrl(url), { headers });
 
     if (!res.ok) {
       // If member endpoint fails due to 401/403, fallback to public endpoint gracefully
@@ -185,11 +186,8 @@ export async function fetchDirectoryListings(
       },
     };
   } catch (err) {
-    console.error('Error fetching directory listings:', err);
-    return {
-      businesses: [],
-      meta: { page: 1, limit: 12, total: 0, totalPages: 0 },
-    };
+    // Propagate so the page can show an error state instead of a misleading empty result.
+    throw err;
   }
 }
 
@@ -198,7 +196,7 @@ export async function fetchDirectoryListings(
  */
 export async function fetchDirectoryFilters(chamberSlug?: string): Promise<DirectoryFilters> {
   try {
-    const res = await fetch('/api/v1/public/directory/filters', {
+    const res = await fetch(apiUrl('/api/v1/public/directory/filters'), {
       headers: getChamberHeaders(chamberSlug),
     });
 

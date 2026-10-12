@@ -1,3 +1,4 @@
+import { apiUrl } from '@/core/api/base';
 import React, { useEffect, useState } from 'react';
 import {
   Dialog,
@@ -23,8 +24,8 @@ interface VerificationData {
   chamberName: string;
   tierName: string;
   status: string;
-  memberSince: string;
-  validUntil: string;
+  memberSince: string | null;
+  validUntil: string | null;
 }
 
 export const VerifyMemberModal: React.FC<VerifyMemberModalProps> = ({
@@ -43,7 +44,7 @@ export const VerifyMemberModal: React.FC<VerifyMemberModalProps> = ({
     setIsLoading(true);
     setError(null);
 
-    fetch(`/api/v1/public/members/verify/${encodeURIComponent(memberId)}`)
+    fetch(apiUrl(`/api/v1/public/members/verify/${encodeURIComponent(memberId)}`))
       .then((res) => {
         if (!res.ok) throw new Error('Member not found or membership is inactive');
         return res.json();
@@ -142,7 +143,7 @@ export const VerifyMemberModal: React.FC<VerifyMemberModalProps> = ({
               <div className="flex justify-between items-center py-1 border-b border-gray-200/60 dark:border-[#26406A]/60">
                 <span className="text-gray-500 dark:text-[#94A6C2]">Member Since</span>
                 <span className="font-medium text-gray-900 dark:text-[#F1F5F9]">
-                  {data.memberSince}
+                  {data.memberSince ?? '—'}
                 </span>
               </div>
               <div className="flex justify-between items-center py-1">
@@ -150,7 +151,7 @@ export const VerifyMemberModal: React.FC<VerifyMemberModalProps> = ({
                   <Calendar className="w-3.5 h-3.5" /> Valid Standing Until
                 </span>
                 <span className="font-semibold text-emerald-700 dark:text-emerald-400">
-                  {data.validUntil}
+                  {data.validUntil ?? '—'}
                 </span>
               </div>
             </div>

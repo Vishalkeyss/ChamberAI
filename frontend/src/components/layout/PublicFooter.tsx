@@ -3,6 +3,7 @@ import { publicNavigation } from '@/core/navigation/public-navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowRight, Mail, Phone, MapPin } from 'lucide-react';
+import { EMAIL_PLACEHOLDER } from '@/lib/placeholders';
 
 export interface PublicFooterProps {
   chamberName?: string;
@@ -98,7 +99,7 @@ export const PublicFooter: React.FC<PublicFooterProps> = ({
             <form onSubmit={(e) => e.preventDefault()} className="flex flex-col gap-2">
               <Input
                 type="email"
-                placeholder="name@business.com"
+                placeholder={EMAIL_PLACEHOLDER}
                 className="bg-background text-sm"
               />
               <Button type="submit" size="sm" className="w-full gap-2">

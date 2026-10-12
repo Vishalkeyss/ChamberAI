@@ -1,6 +1,8 @@
 import type { AppContext } from '../../../core/context';
-import { generatePrefixedId } from '../../../core/shared/crypto';
+import { newId } from '../../../core/shared/ids';
+import { PaymentGatewayService } from './payment-gateway.service';
 import { AppError, ErrorCodes } from '../../../core/shared/errors';
+import { escapeHtml } from '../../../core/shared/html';
 import type {
   MemberInvoice,
   SavedPaymentMethod,
@@ -93,7 +95,7 @@ export class MemberBillingService {
       }>();
 
     if (memberRow || appRow) {
-      const invId = generatePrefixedId('inv');
+      const invId = await newId(db, 'invoices', 'INV', { chamberId });
       const currentYear = new Date().getFullYear();
       const randDigits = Math.floor(1000 + Math.random() * 9000);
       const invoiceNumber = `INV-${currentYear}-${randDigits}`;
@@ -250,8 +252,7 @@ export class MemberBillingService {
 
   /**
    * Pays an invoice online.
-   * Updates invoice status to 'paid', sets gateway transaction reference, and if this invoice is
-   * a membership renewal, extends the member's subscription date.
+   * Until a payment gateway is integrated this refuses payment (503) instead of faking it.
    */
   static async payInvoice(
     c: AppContext,
@@ -266,7 +267,6 @@ export class MemberBillingService {
     paid_at: string;
   }> {
     const db = c.env.DB;
-    const businessId = await this.getUserBusinessId(db, userId, chamberId);
 
     // Verify invoice belongs to this tenant and user
     const invoice = await db
@@ -291,92 +291,28 @@ export class MemberBillingService {
       };
     }
 
-    const now = new Date().toISOString();
-    const txnId = `txn_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    let paymentMethodId = payload.payment_method_id || null;
-
-    // Optional card saving if user requested to save card details
-    if (payload.card_details?.save_card && payload.card_details.last_four) {
-      const pmId = generatePrefixedId('pm');
-      const brand = payload.card_details.brand || 'Visa';
-      const lastFour = payload.card_details.last_four;
-      const expMonth = payload.card_details.expiry_month || 12;
-      const expYear = payload.card_details.expiry_year || 2028;
-
-      await db
-        .prepare(
-          `INSERT INTO payment_methods (
-            id, chamber_id, user_id, type, brand, last_four,
-            expiry_month, expiry_year, is_default, created_at
-          ) VALUES (?, ?, ?, 'card', ?, ?, ?, ?, 0, datetime('now'))`
-        )
-        .bind(pmId, chamberId, userId, brand, lastFour, expMonth, expYear)
-        .run();
-
-      paymentMethodId = pmId;
+    // Validate that a referenced saved payment method belongs to this member.
+    if (payload.payment_method_id) {
+      const pm = await db
+        .prepare('SELECT id FROM payment_methods WHERE id = ? AND chamber_id = ? AND user_id = ? LIMIT 1')
+        .bind(payload.payment_method_id, chamberId, userId)
+        .first<{ id: string }>();
+      if (!pm) {
+        throw new AppError(ErrorCodes.NOT_FOUND, 'Payment method not found or access denied', 404);
+      }
     }
 
-    // 1. Mark invoice as paid
-    await db
-      .prepare(
-        `UPDATE invoices
-         SET status = 'paid',
-             paid_at = ?,
-             payment_gateway_txn_id = ?,
-             payment_method_id = ?,
-             updated_at = ?
-         WHERE id = ? AND chamber_id = ?`
-      )
-      .bind(now, txnId, paymentMethodId, now, invoiceId, chamberId)
-      .run();
-
-    // 2. Side effect: If membership invoice, extend membership subscription
-    if (invoice.invoice_type === 'membership' || invoice.related_plan_id) {
-      await db
-        .prepare(
-          `UPDATE chamber_memberships
-           SET status = 'active',
-               plan_end_date = '2026-12-31',
-               updated_at = ?
-           WHERE chamber_id = ? AND business_id = ?`
-        )
-        .bind(now, chamberId, businessId || '')
-        .run();
-    }
-
-    // 3. Activity audit trail
-    try {
-      const logId = generatePrefixedId('act');
-      await db
-        .prepare(
-          `INSERT INTO activity_logs (
-            id, chamber_id, user_id, entity_type, entity_id, action,
-            metadata_json, created_at
-          ) VALUES (?, ?, ?, 'invoice', ?, 'INVOICE_PAID', ?, ?)`
-        )
-        .bind(
-          logId,
-          chamberId,
-          userId,
-          invoiceId,
-          JSON.stringify({
-            amount: invoice.total_amount,
-            invoice_number: invoice.invoice_number,
-            transaction_id: txnId,
-          }),
-          now
-        )
-        .run();
-    } catch {
-      // Non-blocking for audit log failures
-    }
-
-    return {
-      invoice_id: invoiceId,
-      status: 'paid',
-      transaction_id: txnId,
-      paid_at: now,
-    };
+    // An invoice may only be marked paid from a verified gateway result. Until a gateway
+    // is integrated (OD-001) PaymentGatewayService refuses the charge with 503.
+    await PaymentGatewayService.charge({
+      chamberId,
+      userId,
+      amount: Number(invoice.total_amount || 0),
+      currency: invoice.currency,
+      description: invoice.description || invoice.invoice_number,
+      paymentMethodId: payload.payment_method_id || null,
+    });
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, 'Payment settlement is not implemented', 500);
   }
 
   /**
@@ -416,12 +352,13 @@ export class MemberBillingService {
           const details = JSON.parse(appRow.business_details_json);
           const pm = details?.paymentMethod;
           if (pm && (pm.lastFour || pm.last_four)) {
-            const pmId = generatePrefixedId('pm');
-            const lastFour = String(pm.lastFour || pm.last_four || '4242');
+            const pmId = await newId(db, 'payment_methods', 'PM', { chamberId });
+            const lastFour = String(pm.lastFour || pm.last_four);
             const brand = pm.brand || 'Visa';
-            const expMonth = Number(pm.expiryMonth || pm.expiry_month || 12);
-            const expYear = Number(pm.expiryYear || pm.expiry_year || 2028);
-            const token = pm.gatewayToken || generatePrefixedId('tok');
+            const expMonth = pm.expiryMonth ?? pm.expiry_month ?? null;
+            const expYear = pm.expiryYear ?? pm.expiry_year ?? null;
+            // No gateway integrated (OPEN DECISION): never store a fabricated or client-supplied token.
+            const token = null;
             const createdAt = appRow.created_at || new Date().toISOString();
 
             await db
@@ -440,10 +377,6 @@ export class MemberBillingService {
                 type: 'card',
                 brand,
                 last_four: lastFour,
-                full_card_number: brand.toLowerCase().includes('visa') && lastFour === '4242'
-                  ? '4242 4242 4242 4242'
-                  : `${brand.toLowerCase().includes('amex') ? '3782 822468 ' : '4242 8821 7394 '}${lastFour}`,
-                cvv: brand.toLowerCase() === 'amex' ? '1234' : '123',
                 expiry_month: expMonth,
                 expiry_year: expYear,
                 is_default: true,
@@ -457,19 +390,14 @@ export class MemberBillingService {
 
     return (rows.results || []).map((row: any) => {
       const brand = row.brand || 'Visa';
-      const lastFour = row.last_four || '4242';
-      const isAmex = brand.toLowerCase() === 'amex';
+      const lastFour = row.last_four || '';
       return {
         id: row.id,
         type: row.type || 'card',
         brand,
         last_four: lastFour,
-        full_card_number: brand.toLowerCase().includes('visa') && lastFour === '4242'
-          ? '4242 4242 4242 4242'
-          : `${isAmex ? '3782 822468 ' : '4242 8821 7394 '}${lastFour}`,
-        cvv: isAmex ? '1234' : '123',
-        expiry_month: row.expiry_month || 12,
-        expiry_year: row.expiry_year || 2028,
+        expiry_month: row.expiry_month ?? null,
+        expiry_year: row.expiry_year ?? null,
         is_default: Boolean(row.is_default),
         created_at: row.created_at,
       };
@@ -486,7 +414,7 @@ export class MemberBillingService {
     input: AddPaymentMethodInput
   ): Promise<SavedPaymentMethod> {
     const db = c.env.DB;
-    const pmId = generatePrefixedId('pm');
+    const pmId = await newId(db, 'payment_methods', 'PM', { chamberId });
     const now = new Date().toISOString();
 
     // Check existing count; if first card, force default = 1
@@ -633,7 +561,7 @@ export class MemberBillingService {
       .prepare(
         `SELECT cm.id AS membership_id, cm.plan_id, mp.name AS plan_name, mp.features_json,
                 COALESCE(cm.plan_start_date, cm.created_at) AS period_start,
-                COALESCE(cm.plan_end_date, '2026-12-31') AS period_end
+                COALESCE(cm.plan_end_date, date('now', 'start of year', '+1 year', '-1 day')) AS period_end
          FROM chamber_memberships cm
          LEFT JOIN membership_plans mp ON mp.id = cm.plan_id
          WHERE cm.chamber_id = ? AND cm.business_id = ?
@@ -776,7 +704,7 @@ export class MemberBillingService {
 
     for (const b of dynamicBenefits) {
       if (!existingKeyMap.has(b.key)) {
-        const buId = generatePrefixedId('bu');
+        const buId = await newId(db, 'membership_benefit_usage', 'MBU', { chamberId });
         await db
           .prepare(
             `INSERT OR IGNORE INTO membership_benefit_usage (
@@ -1079,48 +1007,54 @@ export class MemberBillingService {
 
     const previousPlanId = membership.plan_id;
 
-    // 3. Update chamber_memberships with the new plan_id
-    await db
-      .prepare(
-        `UPDATE chamber_memberships
-         SET plan_id = ?, status = 'active', updated_at = datetime('now')
-         WHERE id = ? AND chamber_id = ?`
-      )
-      .bind(newPlanId, membership.membership_id, chamberId)
-      .run();
-
-    // 4. If plan changed, reset benefit usage rows so the new plan's features/quotas take effect
-    if (previousPlanId !== newPlanId) {
-      await db
+    // 3-5. Apply plan switch, benefit reset and audit log atomically.
+    // Status is intentionally left unchanged: switching plans must not reactivate an
+    // expired/suspended membership. Proration / invoicing is an OPEN DECISION.
+    const statements: D1PreparedStatement[] = [
+      db
         .prepare(
-          `DELETE FROM membership_benefit_usage
-           WHERE chamber_id = ? AND membership_id = ?`
+          `UPDATE chamber_memberships
+           SET plan_id = ?, updated_at = datetime('now')
+           WHERE id = ? AND chamber_id = ?`
         )
-        .bind(chamberId, membership.membership_id)
-        .run();
+        .bind(newPlanId, membership.membership_id, chamberId),
+    ];
+
+    // Reset benefit usage rows so the new plan's features/quotas take effect
+    if (previousPlanId !== newPlanId) {
+      statements.push(
+        db
+          .prepare(
+            `DELETE FROM membership_benefit_usage
+             WHERE chamber_id = ? AND membership_id = ?`
+          )
+          .bind(chamberId, membership.membership_id)
+      );
     }
 
-    // 5. Activity log
-    const auditId = generatePrefixedId('act');
-    await db
-      .prepare(
-        `INSERT INTO activity_logs (
-          id, chamber_id, user_id, action, target_type, target_id, details_json, created_at
-        ) VALUES (?, ?, ?, 'member.plan_changed', 'chamber_memberships', ?, ?, datetime('now'))`
-      )
-      .bind(
-        auditId,
-        chamberId,
-        userId,
-        membership.membership_id,
-        JSON.stringify({
-          from_plan_id: previousPlanId,
-          to_plan_id: newPlanId,
-          plan_name: targetPlan.name,
-          plan_price: targetPlan.price,
-        })
-      )
-      .run();
+    const auditId = await newId(db, 'activity_logs', 'ACT', { chamberId, suffixLength: 6, skipUniqueCheck: true });
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO activity_logs (
+            id, chamber_id, user_id, action, target_type, target_id, details_json, created_at
+          ) VALUES (?, ?, ?, 'member.plan_changed', 'chamber_memberships', ?, ?, datetime('now'))`
+        )
+        .bind(
+          auditId,
+          chamberId,
+          userId,
+          membership.membership_id,
+          JSON.stringify({
+            from_plan_id: previousPlanId,
+            to_plan_id: newPlanId,
+            plan_name: targetPlan.name,
+            plan_price: targetPlan.price,
+          })
+        )
+    );
+
+    await db.batch(statements);
 
     return {
       membershipId: membership.membership_id,
@@ -1157,6 +1091,11 @@ export class MemberBillingService {
 
     if (!invoice) {
       throw new AppError(ErrorCodes.NOT_FOUND, 'Invoice not found or unauthorized', 404);
+    }
+
+    // Every DB string is interpolated into HTML below: escape them all to prevent stored XSS.
+    for (const key of Object.keys(invoice)) {
+      if (typeof invoice[key] === 'string') invoice[key] = escapeHtml(invoice[key]);
     }
 
     const chamberName = invoice.chamber_name || '121Meet Chamber of Commerce';

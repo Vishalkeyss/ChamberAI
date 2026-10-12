@@ -1,3 +1,4 @@
+import { buildChamberHost, buildChamberSiteUrl } from '@/core/config/app-config';
 import React from 'react';
 import {
   Dialog,
@@ -31,10 +32,10 @@ export const ChamberDetailModal: React.FC<ChamberDetailModalProps> = ({
   // Format creation date: e.g. "12 Jan 2025"
   const formattedDate = chamber.createdAt
     ? new Intl.DateTimeFormat('en-GB', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      }).format(new Date(chamber.createdAt))
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    }).format(new Date(chamber.createdAt))
     : '12 Jan 2025';
 
   const formatCurrency = (val: number) => {
@@ -51,9 +52,9 @@ export const ChamberDetailModal: React.FC<ChamberDetailModalProps> = ({
   const doneCount = setupProgress.completedSteps;
   const setupPct = setupProgress.percent;
 
-  const displaySubdomain = `${chamber.subdomain}.chamber1to1meet.ai`;
+  const displaySubdomain = buildChamberHost({ subdomain: chamber.subdomain }) || chamber.subdomain;
   const isCustomDomainVerified =
-    chamber.domainStatus === 'verified' || chamber.name.includes('Austin') || chamber.name.includes('Seattle');
+    chamber.domainStatus === 'verified';
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -203,8 +204,8 @@ export const ChamberDetailModal: React.FC<ChamberDetailModalProps> = ({
                   onOpenAdminDashboard(chamber);
                 } else {
                   // Direct navigation to chamber portal
-                  const targetDomain = chamber.customDomain || `${chamber.subdomain}.chamber1to1meet.ai`;
-                  window.open(`http://${targetDomain}`, '_blank');
+                  const targetUrl = buildChamberSiteUrl({ subdomain: chamber.subdomain, customDomain: chamber.customDomain });
+                  if (targetUrl) window.open(targetUrl, '_blank', 'noopener');
                 }
               }}
               className="h-10 px-4 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-xs flex items-center gap-2 shadow-xs transition"

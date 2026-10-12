@@ -1,3 +1,4 @@
+import { apiUrl } from '@/core/api/base';
 import React, { useEffect, useState } from 'react';
 import {
   ShieldCheck,
@@ -26,15 +27,14 @@ interface VerificationData {
   memberId: string;
   membershipId?: string;
   memberName: string;
-  memberEmail?: string;
   avatarUrl?: string | null;
   businessName: string;
   chamberName: string;
   chamberSlug?: string;
   tierName: string;
   status: string;
-  memberSince: string;
-  validUntil: string;
+  memberSince: string | null;
+  validUntil: string | null;
 }
 
 export const MemberVerificationPage: React.FC<MemberVerificationPageProps> = ({
@@ -60,7 +60,7 @@ export const MemberVerificationPage: React.FC<MemberVerificationPageProps> = ({
     setIsLoading(true);
     setError(null);
 
-    fetch(`/api/v1/public/members/verify/${encodeURIComponent(memberId)}`)
+    fetch(apiUrl(`/api/v1/public/members/verify/${encodeURIComponent(memberId)}`))
       .then((res) => {
         if (!res.ok) {
           throw new Error('Member not found or membership is currently inactive.');
@@ -260,7 +260,7 @@ export const MemberVerificationPage: React.FC<MemberVerificationPageProps> = ({
                     </span>
                     <span className="text-sm font-semibold text-emerald-400 mt-1 flex items-center gap-1.5">
                       <Calendar className="w-4 h-4 text-emerald-400 shrink-0" />
-                      Through {data.validUntil}
+                      Through {data.validUntil ?? '—'}
                     </span>
                   </div>
                 </div>

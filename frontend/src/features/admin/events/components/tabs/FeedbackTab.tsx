@@ -63,7 +63,7 @@ export const FeedbackTab: React.FC<FeedbackTabProps> = ({ eventId, chamberSlug }
           <p className="text-xs text-muted-foreground font-medium">Repeat Intent</p>
           <div className="flex items-center gap-2 mt-1">
             <span className="text-2xl font-bold text-foreground">{wouldAttendPct}%</span>
-            <span className="text-xs text-muted-foreground">would attend next year</span>
+            <span className="text-xs text-muted-foreground">would attend again</span>
           </div>
         </Card>
 

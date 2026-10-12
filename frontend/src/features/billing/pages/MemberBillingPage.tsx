@@ -1,3 +1,4 @@
+import { apiUrl } from '@/core/api/base';
 import React, { useState, useEffect } from 'react';
 import {
   CreditCard,
@@ -13,8 +14,6 @@ import {
   DollarSign,
   Loader2,
   RefreshCw,
-  Eye,
-  EyeOff,
   ShoppingBag,
   Landmark,
   CalendarDays,
@@ -86,33 +85,6 @@ export const MemberBillingPage: React.FC<MemberBillingPageProps> = ({
   const [isAddBankOpen, setIsAddBankOpen] = useState<boolean>(false);
   const [selectedInvoiceToPay, setSelectedInvoiceToPay] = useState<MemberInvoice | null>(null);
   const [isPayModalOpen, setIsPayModalOpen] = useState<boolean>(false);
-  const [revealedCards, setRevealedCards] = useState<Record<string, boolean>>({});
-
-  const toggleCardVisibility = (cardId: string) => {
-    setRevealedCards((prev) => ({
-      ...prev,
-      [cardId]: !prev[cardId],
-    }));
-  };
-
-  const getFullCardNumber = (pm: SavedPaymentMethod) => {
-    if (pm.full_card_number) return pm.full_card_number;
-    const b = (pm.brand || 'Visa').toLowerCase();
-    const last4 = pm.last_four || '4242';
-    if (b.includes('visa')) return last4 === '4242' ? '4242 4242 4242 4242' : `4242 8821 7394 ${last4}`;
-    if (b.includes('master')) return `5521 3482 9102 ${last4}`;
-    if (b.includes('rupay') || b.includes('rupee')) return `6080 3482 9102 ${last4}`;
-    if (b.includes('amex')) return `3782 822468 ${last4}`;
-    if (b.includes('discover')) return `6011 3482 9102 ${last4}`;
-    return `4242 8821 7394 ${last4}`;
-  };
-
-  const getCardCvv = (pm: SavedPaymentMethod) => {
-    if (pm.cvv) return pm.cvv;
-    const b = (pm.brand || 'Visa').toLowerCase();
-    return b.includes('amex') ? '1234' : '123';
-  };
-
   const loadBillingData = async () => {
     setIsLoading(true);
     try {
@@ -170,10 +142,9 @@ export const MemberBillingPage: React.FC<MemberBillingPageProps> = ({
   const handleDownloadInvoice = async (inv: MemberInvoice) => {
     try {
       const token = localStorage.getItem('auth_token');
-      const queryParam = token ? `?token=${encodeURIComponent(token)}` : '';
-      const downloadUrl = inv.pdf_url || `/api/v1/member/invoices/${encodeURIComponent(inv.id)}/download${queryParam}`;
+      const downloadUrl = inv.pdf_url || `/api/v1/member/invoices/${encodeURIComponent(inv.id)}/download`;
 
-      const res = await fetch(downloadUrl, {
+      const res = await fetch(inv.pdf_url ? downloadUrl : apiUrl(downloadUrl), {
         method: 'GET',
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -382,12 +353,8 @@ export const MemberBillingPage: React.FC<MemberBillingPageProps> = ({
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {paymentMethods.map((pm) => {
-                const isRevealed = Boolean(revealedCards[pm.id]);
                 const isBank = pm.type === 'bank_account';
-                const cardNumberDisplay = isRevealed
-                  ? getFullCardNumber(pm)
-                  : `•••• •••• •••• ${pm.last_four || '4242'}`;
-                const cvvDisplay = isRevealed ? getCardCvv(pm) : '•••';
+                const cardNumberDisplay = `•••• •••• •••• ${pm.last_four}`;
 
                 if (isBank) {
                   return (
@@ -418,7 +385,7 @@ export const MemberBillingPage: React.FC<MemberBillingPageProps> = ({
                       </div>
 
                       <p className="relative font-mono text-xl sm:text-2xl font-bold tracking-[0.16em] text-white my-3">
-                        •••• •••• {pm.last_four || '1234'}
+                        •••• •••• {pm.last_four}
                       </p>
 
                       <div className="relative flex items-end justify-between">
@@ -467,7 +434,7 @@ export const MemberBillingPage: React.FC<MemberBillingPageProps> = ({
                       style={{ background: '#ffffff10' }}
                     />
 
-                    {/* Top Row: Brand & Default / Eye Controls */}
+                    {/* Top Row: Brand & Default */}
                     <div className="relative flex items-center justify-between">
                       <span className="text-xs font-extrabold tracking-wider uppercase text-white">
                         {pm.brand || 'CARD'}
@@ -478,14 +445,6 @@ export const MemberBillingPage: React.FC<MemberBillingPageProps> = ({
                             Default
                           </span>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => toggleCardVisibility(pm.id)}
-                          className="p-1 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
-                          title={isRevealed ? 'Hide card details' : 'View full card number & CVV'}
-                        >
-                          {isRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                        </button>
                       </div>
                     </div>
 
@@ -499,15 +458,10 @@ export const MemberBillingPage: React.FC<MemberBillingPageProps> = ({
                       <div>
                         <p className="text-[10px] uppercase tracking-wider text-white/70">EXPIRES</p>
                         <p className="text-sm font-semibold text-white">
-                          {pm.expiry_month.toString().padStart(2, '0')}/
-                          {pm.expiry_year.toString().slice(-2)}
-                        </p>
-                        {isRevealed && (
-                          <p className="text-xs text-white/90 mt-0.5">
-                            CVV: <span className="font-mono font-bold">{cvvDisplay}</span>
-                          </p>
-                        )}
-                      </div>
+                          {pm.expiry_month != null && pm.expiry_year != null
+                            ? `${pm.expiry_month.toString().padStart(2, '0')}/${pm.expiry_year.toString().slice(-2)}`
+                            : '—'}
+                        </p>                      </div>
 
                       <div className="flex items-center gap-1.5">
                         {!pm.is_default && (

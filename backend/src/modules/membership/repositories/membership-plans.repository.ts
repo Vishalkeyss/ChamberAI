@@ -1,4 +1,4 @@
-import { generatePrefixedId } from '../../../core/shared/crypto';
+import { newId } from '../../../core/shared/ids';
 import type {
   CreatePlanDTO,
   MembershipPlanDTO,
@@ -134,7 +134,7 @@ export class MembershipPlansRepository {
     data: CreatePlanDTO,
     ipAddress?: string
   ): Promise<MembershipPlanDTO> {
-    const planId = generatePrefixedId('plan');
+    const planId = await newId(db, 'membership_plans', 'PLAN', { chamberId });
     const accentColor = data.accentColor || '#2563EB';
     const price = data.price ?? 0;
     const pricingBasis = data.pricingBasis;
@@ -173,7 +173,7 @@ export class MembershipPlansRepository {
       .run();
 
     // Side effect: Log to activity_logs (Prompt 02.1 Section 14)
-    const logId = generatePrefixedId('act');
+    const logId = await newId(db, 'activity_logs', 'ACT', { chamberId, suffixLength: 6, skipUniqueCheck: true });
     try {
       await db
         .prepare(
@@ -269,7 +269,7 @@ export class MembershipPlansRepository {
       .run();
 
     // Side effect: Log to activity_logs
-    const logId = generatePrefixedId('act');
+    const logId = await newId(db, 'activity_logs', 'ACT', { chamberId, suffixLength: 6, skipUniqueCheck: true });
     try {
       await db
         .prepare(
@@ -334,7 +334,7 @@ export class MembershipPlansRepository {
       .run();
 
     // Log status toggle to activity_logs
-    const logId = generatePrefixedId('act');
+    const logId = await newId(db, 'activity_logs', 'ACT', { chamberId, suffixLength: 6, skipUniqueCheck: true });
     try {
       await db
         .prepare(
@@ -382,7 +382,7 @@ export class MembershipPlansRepository {
       .bind(chamberId, planId)
       .run();
 
-    const logId = generatePrefixedId('act');
+    const logId = await newId(db, 'activity_logs', 'ACT', { chamberId, suffixLength: 6, skipUniqueCheck: true });
     try {
       await db
         .prepare(

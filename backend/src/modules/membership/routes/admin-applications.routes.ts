@@ -6,7 +6,7 @@ import { ApplicationsRepository } from '../repositories/applications.repository'
 import { successResponse } from '../../../core/shared/response';
 import { AppError, ErrorCodes } from '../../../core/shared/errors';
 
-import { generatePrefixedId } from '../../../core/shared/crypto';
+import { chamberKeyedId } from '../../../core/shared/ids';
 
 export const adminApplicationsRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -100,7 +100,7 @@ adminApplicationsRoutes.get(
  */
 adminApplicationsRoutes.patch(
   '/admin/applications/approval-mode',
-  requireRole(['full_admin', 'chapter_admin', 'billing_admin']),
+  requireRole(['full_admin']),
   async (c) => {
     const chamberId = c.get('chamberId');
     if (!chamberId) {
@@ -123,7 +123,7 @@ adminApplicationsRoutes.patch(
         .bind(val, now, chamberId)
         .run();
     } else {
-      const id = generatePrefixedId('cfg');
+      const id = await chamberKeyedId(c.env.DB, 'CSET', chamberId);
       await c.env.DB
         .prepare(
           `INSERT INTO chamber_settings (
@@ -155,7 +155,7 @@ adminApplicationsRoutes.patch(
  */
 adminApplicationsRoutes.patch(
   '/admin/applications/:id/approve',
-  requireRole(['full_admin', 'chapter_admin', 'billing_admin']),
+  requireRole(['full_admin']),
   async (c) => {
     const chamberId = c.get('chamberId');
     const user = c.get('user');
@@ -180,7 +180,11 @@ adminApplicationsRoutes.patch(
     );
 
     if (!result.success) {
-      throw new AppError(ErrorCodes.INTERNAL_ERROR, 'Failed to approve application', 500);
+      throw new AppError(
+        ErrorCodes.CONFLICT,
+        'Application cannot be approved: it is rejected or has already been approved',
+        409
+      );
     }
 
     const message = result.charged
@@ -214,7 +218,7 @@ adminApplicationsRoutes.patch(
  */
 adminApplicationsRoutes.patch(
   '/admin/applications/:id/request-changes',
-  requireRole(['full_admin', 'chapter_admin', 'billing_admin']),
+  requireRole(['full_admin']),
   async (c) => {
     const chamberId = c.get('chamberId');
     const user = c.get('user');
@@ -264,7 +268,7 @@ adminApplicationsRoutes.patch(
  */
 adminApplicationsRoutes.patch(
   '/admin/applications/:id/reject',
-  requireRole(['full_admin', 'chapter_admin', 'billing_admin']),
+  requireRole(['full_admin']),
   async (c) => {
     const chamberId = c.get('chamberId');
     const user = c.get('user');

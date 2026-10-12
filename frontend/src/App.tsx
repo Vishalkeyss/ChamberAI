@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AuthProvider } from './core/context/AuthContext';
 import { useAuth } from './hooks/useAuth';
 import { PublicLayout } from './components/layout/PublicLayout';
@@ -28,6 +28,8 @@ import { MemberMembershipPage } from './features/member/pages/MemberMembershipPa
 import { MemberLoginModal } from './features/auth/components/MemberLoginModal';
 import { SuperChambersPage } from './features/super-admin/pages/SuperChambersPage';
 import { ChamberOnboardingWizard } from './features/admin/onboarding/pages/ChamberOnboardingWizard';
+import { fetchOnboardingState } from './features/admin/onboarding/services/onboarding.api';
+import { buildChamberSiteUrl, buildPlatformRootUrl, detectChamberSlugFromHost, detectChamberSlugFromPath, getActiveChamberSlug, isCustomDomainHost, isLocalHostname, isPathTenantRouting, setActiveChamberSlug } from './core/config/app-config';
 import { ApplicationWizardPage } from './features/membership/pages/ApplicationWizardPage';
 import { TrackApplicationPage } from './features/membership/pages/TrackApplicationPage';
 import { TrackApplicationModal } from './features/membership/components/TrackApplicationModal';
@@ -41,8 +43,16 @@ import { DirectoryPage } from './features/directory/pages/DirectoryPage';
 import { EventsExplorerPage } from './features/events/pages/EventsExplorerPage';
 import { AdminEventDetailPage } from './features/admin/events/pages/AdminEventDetailPage';
 import { AdminEventsListPage } from './features/admin/events/pages/AdminEventsListPage';
+import { MessagesPage } from './features/networking/pages/MessagesPage';
+import { ReferralsPage } from './features/networking/pages/ReferralsPage';
+import { DigitalCardPage } from './features/networking/pages/DigitalCardPage';
+import { PublicCardPage } from './features/public/pages/PublicCardPage';
+import { CrmPipelinePage } from './features/crm/pages/CrmPipelinePage';
+import { KanbanTasksPage } from './features/tasks/pages/KanbanTasksPage';
+import { MentorshipHubPage } from './features/mentorship/pages/MentorshipHubPage';
+import { AdminMentorshipPage } from './features/admin/mentorship/AdminMentorshipPage';
 
-export type MemberViewType = 'overview' | 'plans' | 'billing' | 'directory' | 'events';
+export type MemberViewType = 'overview' | 'plans' | 'billing' | 'directory' | 'events' | 'messages' | 'referrals' | 'card' | 'crm' | 'tasks' | 'mentorship';
 
 const MEMBER_VIEW_ALIAS_MAP: Record<string, MemberViewType> = {
   membership: 'plans',
@@ -52,6 +62,12 @@ const MEMBER_VIEW_ALIAS_MAP: Record<string, MemberViewType> = {
   billing: 'billing',
   directory: 'directory',
   events: 'events',
+  messages: 'messages',
+  referrals: 'referrals',
+  card: 'card',
+  crm: 'crm',
+  tasks: 'tasks',
+  mentorship: 'mentorship',
   overview: 'overview',
 };
 
@@ -83,7 +99,8 @@ type ActiveShell =
   | 'chapter_admin'
   | 'super_admin'
   | 'settings'
-  | 'verify';
+  | 'verify'
+  | 'card';
 
 function AppContent() {
   const [activeShell, setActiveShell] = useState<ActiveShell>(() => {
@@ -91,6 +108,10 @@ function AppContent() {
       const p = window.location.pathname;
       if (p.startsWith('/verify')) {
         return 'verify';
+      }
+      // Prompt 05.4 public business card opened from a QR scan.
+      if (p.startsWith('/card/')) {
+        return 'card';
       }
       if (p.startsWith('/portal') || p.startsWith('/member')) {
         return 'member';
@@ -140,7 +161,7 @@ function AppContent() {
         return sub || 'dashboard';
       }
     }
-    return 'onboarding';
+    return 'dashboard';
   });
   const [adminPath, setAdminPath] = useState<string>(() => {
     if (typeof window !== 'undefined') {
@@ -149,7 +170,7 @@ function AppContent() {
         return p;
       }
     }
-    return '/admin/onboarding';
+    return '/admin/dashboard';
   });
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [selectedAdminEventId, setSelectedAdminEventId] = useState<string | null>(() => {
@@ -290,17 +311,7 @@ function AppContent() {
           const params = new URLSearchParams(window.location.search);
           const chamberQueryParam = params.get('chamber');
 
-          const hostname = window.location.hostname.toLowerCase();
-          const rootDomain = '121meet.ai';
-
-          let detectedSlug: string | null = null;
-          if (hostname.endsWith(`.${rootDomain}`)) {
-            detectedSlug = hostname.slice(0, -(rootDomain.length + 1));
-          } else if (hostname.endsWith('.chamber1to1meet.ai')) {
-            detectedSlug = hostname.slice(0, -'.chamber1to1meet.ai'.length);
-          } else if (hostname.endsWith('.localhost')) {
-            detectedSlug = hostname.slice(0, -'.localhost'.length);
-          }
+          const detectedSlug = detectChamberSlugFromHost();
 
           const pathname = window.location.pathname;
           let pathSlug: string | null = null;
@@ -308,7 +319,12 @@ function AppContent() {
             pathSlug = pathname.split('/')[2] || null;
           }
 
-          const effectiveSlug = detectedSlug || chamberQueryParam || pathSlug;
+          // Path routing (staging): /c/<slug>, else the chamber chosen earlier in this tab.
+          const effectiveSlug =
+            detectedSlug ||
+            chamberQueryParam ||
+            pathSlug ||
+            (isPathTenantRouting() ? detectChamberSlugFromPath() || getActiveChamberSlug() : null);
 
           if (effectiveSlug && effectiveSlug !== 'app' && effectiveSlug !== 'superadmin' && effectiveSlug !== 'www') {
             const found = data.find(
@@ -319,12 +335,9 @@ function AppContent() {
             if (found) {
               setSelectedChamber(found);
             }
-          } else if (
-            hostname &&
-            !['localhost', '127.0.0.1', rootDomain, `app.${rootDomain}`, `superadmin.${rootDomain}`].includes(hostname)
-          ) {
+          } else if (isCustomDomainHost(window.location.hostname.toLowerCase())) {
             // Check custom domain mapping
-            const found = data.find((c) => c.customDomain?.toLowerCase() === hostname);
+            const found = data.find((c) => c.customDomain?.toLowerCase() === window.location.hostname.toLowerCase());
             if (found) {
               setSelectedChamber(found);
             }
@@ -355,6 +368,19 @@ function AppContent() {
     showSessionExpired,
     dismissSessionExpired,
   } = useAuth();
+
+  // Path routing (staging): the selected chamber is the tenant for API calls in this tab.
+  useEffect(() => {
+    if (isPathTenantRouting() && selectedChamber?.slug) setActiveChamberSlug(selectedChamber.slug);
+  }, [selectedChamber?.slug]);
+
+  // Chamber onboarding (Prompt 13.2, OD-105…108): chamber-level status from the authenticated
+  // onboarding API, full_admin only. null = unknown / not applicable.
+  const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null);
+  // Set when the admin enters the admin portal (login / portal switch): land on the wizard once
+  // while onboarding is incomplete, without trapping the admin there afterwards.
+  const landOnOnboardingRef = useRef(false);
+  const isFullAdmin = highestRole === 'full_admin';
 
   // Listen for login query params or portal triggers on mount
   useEffect(() => {
@@ -528,13 +554,10 @@ function AppContent() {
     } else if (['full_admin', 'billing_admin', 'group_admin', 'chapter_admin'].includes(highestRole || '')) {
       setActiveShell('admin');
       setAiStage('traditional');
-      const isNotOnboarded =
-        selectedChamber?.onboarded === 0 ||
-        selectedChamber?.onboarded === false ||
-        selectedChamber?.status === 'pending_setup';
-      const target = isNotOnboarded ? '/admin/onboarding' : (adminPath && adminPath !== '/admin/onboarding' ? adminPath : '/admin/dashboard');
+      landOnOnboardingRef.current = true;
+      const target = adminPath && adminPath !== '/admin/onboarding' ? adminPath : '/admin/dashboard';
       setAdminPath(target);
-      setAdminView(target === '/admin/onboarding' ? 'onboarding' : 'dashboard');
+      setAdminView(resolveAdminView(target));
       if (typeof window !== 'undefined') {
         window.history.pushState({}, '', target);
       }
@@ -550,32 +573,14 @@ function AppContent() {
 
   const handleSelectChamber = (chamber: RegisteredChamber) => {
     if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname.toLowerCase();
-      const port = window.location.port ? `:${window.location.port}` : '';
-      const protocol = window.location.protocol;
-
-      // In local development (localhost, 127.0.0.1, or *.localhost)
-      if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost')) {
-        const targetUrl = `${protocol}//${chamber.slug}.localhost${port}/`;
-        if (window.location.href !== targetUrl) {
-          window.location.href = targetUrl;
-          return;
-        }
-      } else if (chamber.customDomain) {
-        const targetUrl = `${protocol}//${chamber.customDomain}${port}/`;
-        if (window.location.href !== targetUrl) {
-          window.location.href = targetUrl;
-          return;
-        }
-      } else {
-        const rootDomain = hostname.endsWith('chamber1to1meet.ai')
-          ? 'chamber1to1meet.ai'
-          : '121meet.ai';
-        const targetUrl = `${protocol}//${chamber.slug}.${rootDomain}${port}/`;
-        if (window.location.href !== targetUrl) {
-          window.location.href = targetUrl;
-          return;
-        }
+      // Host comes from core/config (custom domain, else <slug>.<platform domain> / .localhost).
+      // Locally custom domains cannot resolve, so always use <slug>.localhost.
+      const targetUrl = buildChamberSiteUrl(
+        isLocalHostname() ? { slug: chamber.slug } : { slug: chamber.slug, customDomain: chamber.customDomain }
+      );
+      if (targetUrl && window.location.href !== targetUrl) {
+        window.location.href = targetUrl;
+        return;
       }
     }
 
@@ -583,27 +588,12 @@ function AppContent() {
   };
 
   const handleBackToChambersDirectory = () => {
+    if (isPathTenantRouting()) setActiveChamberSlug(null);
     if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname.toLowerCase();
-      const port = window.location.port ? `:${window.location.port}` : '';
-      const protocol = window.location.protocol;
-
-      // In local development
-      if (hostname.endsWith('.localhost') || hostname === 'localhost' || hostname === '127.0.0.1') {
-        const targetUrl = `${protocol}//localhost${port}/`;
-        if (window.location.href !== targetUrl) {
-          window.location.href = targetUrl;
-          return;
-        }
-      } else {
-        const rootDomain = hostname.endsWith('chamber1to1meet.ai')
-          ? 'chamber1to1meet.ai'
-          : '121meet.ai';
-        const targetUrl = `${protocol}//${rootDomain}${port}/`;
-        if (window.location.href !== targetUrl) {
-          window.location.href = targetUrl;
-          return;
-        }
+      const targetUrl = buildPlatformRootUrl();
+      if (targetUrl && window.location.href !== targetUrl) {
+        window.location.href = targetUrl;
+        return;
       }
     }
 
@@ -623,15 +613,11 @@ function AppContent() {
       setActiveShell('admin');
       setAiStage('traditional');
 
-      const isNotOnboarded =
-        selectedChamber?.onboarded === 0 ||
-        selectedChamber?.onboarded === false ||
-        selectedChamber?.status === 'pending_setup' ||
-        authData?.user?.onboardingComplete === 0;
-
-      const target = isNotOnboarded ? '/admin/onboarding' : '/admin/dashboard';
+      // The onboarding effect moves a full_admin to the wizard if the chamber is not onboarded.
+      landOnOnboardingRef.current = true;
+      const target = '/admin/dashboard';
       setAdminPath(target);
-      setAdminView(isNotOnboarded ? 'onboarding' : 'dashboard');
+      setAdminView('dashboard');
       if (typeof window !== 'undefined') {
         window.history.pushState({}, '', target);
       }
@@ -645,21 +631,47 @@ function AppContent() {
     }
   };
 
-  // Auto-redirect to onboarding wizard if chamber is pending setup
+  // Load the chamber's onboarding status for full admins in the admin portal.
   useEffect(() => {
-    if (
-      activeShell === 'admin' &&
-      selectedChamber &&
-      (selectedChamber.onboarded === 0 ||
-        selectedChamber.onboarded === false ||
-        selectedChamber.status === 'pending_setup')
-    ) {
-      if (adminView !== 'onboarding') {
-        setAdminPath('/admin/onboarding');
-        setAdminView('onboarding');
-      }
+    if (activeShell !== 'admin' || !isAuthenticated || !isFullAdmin) {
+      setOnboardingCompleted(null);
+      return;
     }
-  }, [activeShell, selectedChamber, adminView]);
+    let cancelled = false;
+    fetchOnboardingState()
+      .then((state) => {
+        if (!cancelled) setOnboardingCompleted(Boolean(state?.is_completed));
+      })
+      .catch(() => {
+        if (!cancelled) setOnboardingCompleted(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeShell, isAuthenticated, isFullAdmin, user?.id]);
+
+  // First landing → wizard while incomplete; wizard URL → dashboard once completed or for
+  // admins who cannot run it (chapter / group / billing).
+  useEffect(() => {
+    if (activeShell !== 'admin') return;
+    const goTo = (path: string) => {
+      setAdminPath(path);
+      setAdminView(resolveAdminView(path));
+      if (typeof window !== 'undefined') window.history.replaceState({}, '', path);
+    };
+    if (onboardingCompleted === false && landOnOnboardingRef.current) {
+      landOnOnboardingRef.current = false;
+      if (adminView !== 'onboarding') goTo('/admin/onboarding');
+      return;
+    }
+    if (onboardingCompleted === true) landOnOnboardingRef.current = false;
+    if (
+      adminView === 'onboarding' &&
+      (onboardingCompleted === true || (highestRole && !isFullAdmin))
+    ) {
+      goTo('/admin/dashboard');
+    }
+  }, [activeShell, onboardingCompleted, adminView, highestRole, isFullAdmin]);
 
   const handleLogout = async () => {
     await logout();
@@ -672,26 +684,30 @@ function AppContent() {
 
   const [businessLogo, setBusinessLogo] = useState<string | null | undefined>(undefined);
 
-  // Sync business logo for member profile avatar
+  const currentUserId = user?.id;
+
+  // Sync business logo for member profile avatar. Re-runs per user so one account's
+  // logo never carries over to another account (e.g. member → admin in the same tab).
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchBusinessProfile()
-        .then((profile) => {
-          if (profile?.logoUrl) {
-            setBusinessLogo(profile.logoUrl);
-          } else {
-            setBusinessLogo(null);
-          }
-        })
-        .catch(() => {
-          setBusinessLogo(null);
-        });
-    } else {
-      setBusinessLogo(undefined);
-    }
-  }, [isAuthenticated]);
+    setBusinessLogo(undefined);
+    if (!isAuthenticated || !currentUserId) return;
+
+    let cancelled = false;
+    fetchBusinessProfile()
+      .then((profile) => {
+        if (!cancelled) setBusinessLogo(profile?.logoUrl || null);
+      })
+      .catch(() => {
+        // No business linked to this account (e.g. admins) → fall back to the user's own avatar.
+        if (!cancelled) setBusinessLogo(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, currentUserId]);
 
   useEffect(() => {
+    if (!currentUserId) return;
     const handleLogoUpdate = (e: any) => {
       const url = e.detail?.logoUrl;
       setBusinessLogo(url ? url : null);
@@ -700,7 +716,7 @@ function AppContent() {
     return () => {
       window.removeEventListener('business-logo:updated', handleLogoUpdate);
     };
-  }, []);
+  }, [currentUserId]);
 
   const activeUserProp = user
     ? {
@@ -850,6 +866,18 @@ function AppContent() {
                   ? '/portal/directory'
                   : memberView === 'events'
                   ? '/portal/events'
+                  : memberView === 'messages'
+                  ? '/portal/messages'
+                  : memberView === 'referrals'
+                  ? '/portal/referrals'
+                  : memberView === 'card'
+                  ? '/portal/card'
+                  : memberView === 'crm'
+                  ? '/portal/crm'
+                  : memberView === 'tasks'
+                  ? '/portal/tasks'
+                  : memberView === 'mentorship'
+                  ? '/portal/mentorship'
                   : '/portal/overview'
               }
               onNavigate={(path) => {
@@ -912,6 +940,12 @@ function AppContent() {
                   mode="member"
                   chamberName={resolvedChamberName}
                   chamberSlug={resolvedChamberSlug}
+                  onOpenMessages={(partnerId) => {
+                    setMemberView('messages');
+                    if (typeof window !== 'undefined') {
+                      window.history.pushState({}, '', `/portal/messages?with=${encodeURIComponent(partnerId)}`);
+                    }
+                  }}
                   onNavigateToPlans={() => {
                     setMemberView('plans');
                     if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/membership');
@@ -927,6 +961,32 @@ function AppContent() {
                     if (typeof window !== 'undefined') window.history.pushState({}, '', '/portal/membership');
                   }}
                 />
+              ) : memberView === 'messages' ? (
+                <MessagesPage
+                  onViewBusiness={(partner) => {
+                    setMemberView('directory');
+                    if (typeof window !== 'undefined') {
+                      window.history.pushState({}, '', `/portal/directory?q=${encodeURIComponent(partner.companyName || partner.name)}`);
+                    }
+                  }}
+                />
+              ) : memberView === 'crm' ? (
+                <CrmPipelinePage chamberSlug={resolvedChamberSlug} />
+              ) : memberView === 'tasks' ? (
+                <KanbanTasksPage />
+              ) : memberView === 'mentorship' ? (
+                <MentorshipHubPage
+                  onOpenMessages={(partnerId) => {
+                    setMemberView('messages');
+                    if (typeof window !== 'undefined') {
+                      window.history.pushState({}, '', `/portal/messages?with=${encodeURIComponent(partnerId)}`);
+                    }
+                  }}
+                />
+              ) : memberView === 'card' ? (
+                <DigitalCardPage />
+              ) : memberView === 'referrals' ? (
+                <ReferralsPage chamberName={resolvedChamberName} chamberSlug={resolvedChamberSlug} />
               ) : (
                 <MemberOverviewPage
                   onNavigateSection={(id) => {
@@ -1000,6 +1060,7 @@ function AppContent() {
             <AdminLayout
               chamberName={resolvedChamberName}
               user={activeUserProp}
+              showOnboarding={onboardingCompleted === false}
               onLogout={handleLogout}
               onAccountSettings={() => {
                 setActiveShell('settings');
@@ -1037,15 +1098,18 @@ function AppContent() {
                 <ChamberOnboardingWizard
                   chamberName={resolvedChamberName}
                   onComplete={() => {
+                    setOnboardingCompleted(true);
                     setSelectedChamber((prev) =>
                       prev ? { ...prev, onboarded: true, status: 'active' } : null
                     );
                     setAdminPath('/admin/dashboard');
                     setAdminView('dashboard');
+                    if (typeof window !== 'undefined') window.history.pushState({}, '', '/admin/dashboard');
                   }}
                   onExit={() => {
                     setAdminPath('/admin/dashboard');
                     setAdminView('dashboard');
+                    if (typeof window !== 'undefined') window.history.pushState({}, '', '/admin/dashboard');
                   }}
                 />
               ) : adminView === 'plans' ? (
@@ -1088,6 +1152,8 @@ function AppContent() {
                   onNavigateBack={() => setAdminView('plans')}
                   onPlanSaved={() => setAdminView('plans')}
                 />
+              ) : adminView === 'mentorship' ? (
+                <AdminMentorshipPage />
               ) : adminView === 'dashboard' ? (
                 <div className="space-y-6">
                   <div className="flex items-center justify-between">
@@ -1371,6 +1437,29 @@ function AppContent() {
             setActiveShell('public');
             if (typeof window !== 'undefined') {
               window.history.pushState({}, '', '/');
+            }
+          }}
+        />
+      )}
+
+      {/* Prompt 05.4: public digital business card (/card/:token) */}
+      {activeShell === 'card' && (
+        <PublicCardPage
+          token={decodeURIComponent((typeof window !== 'undefined' ? window.location.pathname : '').split('/')[2] || '')}
+          // Only the subdomain-resolved chamber (never a fallback chamber) — OD-002.
+          chamberSlug={selectedChamber?.slug}
+          ready={!isLoadingChambers}
+          isAuthenticated={isAuthenticated}
+          onConnect={(card) => {
+            if (isAuthenticated) {
+              setActiveShell('member');
+              setAiStage('traditional');
+              setMemberView('directory');
+              window.history.pushState({}, '', `/portal/directory?q=${encodeURIComponent(card.profile.company || card.profile.name)}`);
+            } else {
+              setActiveShell('public');
+              setPublicView('apply');
+              window.history.pushState({}, '', '/join');
             }
           }}
         />

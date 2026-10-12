@@ -1,3 +1,4 @@
+import { buildChamberHost } from '@/core/config/app-config';
 import React from 'react';
 import { Landmark, Globe, Users, ArrowRight, Loader2, ShieldCheck, Sun, Moon, Monitor } from 'lucide-react';
 import type { RegisteredChamber } from '../data/chambers';
@@ -193,8 +194,7 @@ export const ChamberPickerGate: React.FC<ChamberPickerGateProps> = ({
               </div>
             ) : (
               chambers.map((chamber) => {
-                const displayDomain =
-                  chamber.customDomain || `${chamber.slug}.chamber1to1meet.ai`;
+                const displayDomain = buildChamberHost(chamber) || chamber.slug;
 
                 return (
                   <button

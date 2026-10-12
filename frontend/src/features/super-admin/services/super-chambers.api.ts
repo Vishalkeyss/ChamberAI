@@ -11,7 +11,7 @@ function getAuthHeaders(): HeadersInit {
   const token =
     localStorage.getItem('auth_token') ||
     localStorage.getItem('session_token') ||
-    'dev_super_admin_token';
+    '';
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Accept: 'application/json',

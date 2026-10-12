@@ -19,6 +19,7 @@ import { trackApplication, resubmitApplication, type ApplicationTrackingData } f
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { isValidPhoneNumber, normalizePhoneNumber } from '@/lib/validation';
+import { PHONE_PLACEHOLDER } from '@/lib/placeholders';
 
 export interface TrackApplicationPageProps {
   initialCode?: string;
@@ -340,7 +341,7 @@ export const TrackApplicationPage: React.FC<TrackApplicationPageProps> = ({
                       type="text"
                       value={editPhone}
                       onChange={(e) => setEditPhone(e.target.value)}
-                      placeholder="+1 (555) 019-2834"
+                      placeholder={PHONE_PLACEHOLDER}
                       className="mt-1 px-2.5 py-1.5 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 w-full"
                     />
                   ) : (

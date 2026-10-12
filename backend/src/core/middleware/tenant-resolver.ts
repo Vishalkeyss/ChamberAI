@@ -3,37 +3,22 @@ import type { Env } from '../env';
 import type { AppVariables, ChamberContextData } from '../context';
 import { AppError, ErrorCodes } from '../shared/errors';
 import { SessionService } from '../../modules/auth/services/session.service';
+import { getRuntimeConfig, extractSubdomain, isPlatformHost as isPlatformHostFor } from '../config';
 
-export function extractSubdomain(host: string, rootDomain = '121meet.ai'): string | null {
-  const cleanHost = (host || '').split(':')[0].toLowerCase();
-  if (cleanHost.endsWith(`.${rootDomain}`)) {
-    const subdomain = cleanHost.slice(0, -(rootDomain.length + 1));
-    return subdomain.includes('.') ? null : subdomain;
-  }
-  if (cleanHost.endsWith('.localhost')) {
-    const subdomain = cleanHost.slice(0, -('.localhost'.length));
-    return subdomain.includes('.') ? null : subdomain;
-  }
-  return null;
-}
+export { extractSubdomain };
 
 export const resolveChamberMiddleware: MiddlewareHandler<{
   Bindings: Env;
   Variables: AppVariables;
 }> = async (c, next) => {
   const host = c.req.header('Host') || '';
-  const rootDomain = c.env.PLATFORM_DOMAIN || '121meet.ai';
-  const explicitChamberId = c.req.header('X-Chamber-ID');
-  const explicitChamberSlug = c.req.header('X-Chamber-Slug');
+  const config = getRuntimeConfig(c.env);
+  // Client tenant headers only where allowed by core/config (local, staging); production uses the Host.
+  const explicitChamberId = config.allowTenantHeader ? c.req.header('X-Chamber-ID') : undefined;
+  const explicitChamberSlug = config.allowTenantHeader ? c.req.header('X-Chamber-Slug') : undefined;
 
   const cleanHost = host.split(':')[0].toLowerCase();
-  const isPlatformHost =
-    !cleanHost ||
-    cleanHost === rootDomain ||
-    cleanHost === `app.${rootDomain}` ||
-    cleanHost === `superadmin.${rootDomain}` ||
-    cleanHost === 'localhost' ||
-    cleanHost === '127.0.0.1';
+  const isPlatformHost = isPlatformHostFor(host, config);
 
   let chamber: ChamberContextData | null = null;
 
@@ -46,7 +31,7 @@ export const resolveChamberMiddleware: MiddlewareHandler<{
       .first<ChamberContextData>();
   }
 
-  const subdomain = explicitChamberSlug || extractSubdomain(host, rootDomain);
+  const subdomain = explicitChamberSlug || extractSubdomain(host, config.platformDomain, config.isLocal);
   if (!chamber && subdomain) {
     chamber = await c.env.DB.prepare(
       "SELECT id, name, subdomain, custom_domain, status FROM platform_chambers WHERE (subdomain = ? OR id = ?) AND status != 'suspended' LIMIT 1"

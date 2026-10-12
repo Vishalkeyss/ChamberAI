@@ -195,6 +195,7 @@ function createMockDb() {
     benefitUsageTable,
     plansTable,
     membershipTable,
+    batch: async (stmts: any[]) => Promise.all(stmts.map((s) => s.run())),
     prepare: (query: string) => ({
       bind: (...args: any[]) => ({
         first: async () => {
@@ -521,7 +522,7 @@ describe('Prompt 02.5: Member Billing, Invoices, Payment Methods & Benefit Usage
     assert.equal(json.data.invoices[0].status, 'unpaid');
   });
 
-  it('4. POST /api/v1/member/invoices/:id/pay settles an invoice and records transaction ID', async () => {
+  it('4. POST /api/v1/member/invoices/:id/pay refuses with 503 and leaves invoice unpaid (no gateway)', async () => {
     const { app, env, mockKV, mockDb } = setupTestEnv();
     const token = 'sess_test_token_billing_03';
     await mockKV.put(`session:${token}`, JSON.stringify(mockSession));
@@ -538,17 +539,16 @@ describe('Prompt 02.5: Member Billing, Invoices, Payment Methods & Benefit Usage
       }),
     });
 
+    const before = { ...mockDb.invoicesTable.get('inv_001') };
     const res = await app.fetch(req, env, {} as any);
-    assert.equal(res.status, 200);
+    assert.equal(res.status, 503);
 
     const json = (await res.json()) as any;
-    assert.equal(json.success, true);
-    assert.equal(json.data.status, 'paid');
-    assert.match(json.data.transaction_id, /^txn_/);
+    assert.equal(json.success, false);
 
     const updated = mockDb.invoicesTable.get('inv_001');
-    assert.equal(updated.status, 'paid');
-    assert.ok(updated.paid_at);
+    assert.equal(updated.status, before.status);
+    assert.equal(updated.paid_at, before.paid_at);
   });
 
   it('5. Tenant Isolation: Rejects payment on invoice belonging to another chamber (404)', async () => {

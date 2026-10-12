@@ -21,6 +21,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { useAuth } from '@/hooks/useAuth';
 
 export interface UserMenuProps {
   user: {
@@ -42,6 +43,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({
   onEditProfile,
   onAccountSettings,
 }) => {
+  const { logout } = useAuth();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -51,9 +53,8 @@ export const UserMenu: React.FC<UserMenuProps> = ({
       if (onLogout) {
         await onLogout();
       } else {
-        // Fallback default: purge token and redirect to home
-        localStorage.removeItem('auth_token');
-        sessionStorage.removeItem('auth_token');
+        // Fallback default: full logout (server session + local state), then go home
+        await logout();
         window.location.href = '/';
       }
     } finally {

@@ -4,13 +4,22 @@ export interface SendOtpEmailParams {
   portal: string;
   chamberName?: string;
   sendgridApiKey?: string;
+  /** From core/config. */
+  fromAddress?: string | null;
+  templateId?: string | null;
+  /** Only local dev / tests may print the code instead of sending it (BUG-049). */
+  allowConsoleFallback: boolean;
 }
 
 export async function sendOtpEmail(params: SendOtpEmailParams): Promise<boolean> {
-  const { to, code, portal, chamberName = 'Chamber of Commerce', sendgridApiKey } = params;
+  const { to, code, portal, chamberName = 'Chamber of Commerce', sendgridApiKey, fromAddress, templateId, allowConsoleFallback } = params;
 
-  // In local development or if no API key is set, log to terminal
-  if (!sendgridApiKey) {
+  // Local development only: print to the terminal when SendGrid is not configured.
+  if (!sendgridApiKey || !fromAddress || !templateId) {
+    if (!allowConsoleFallback) {
+      console.error('[SENDGRID_NOT_CONFIGURED] OTP email not sent');
+      return false;
+    }
     console.log(
       `\n========================================\n` +
       `[DEV_OTP_DISPATCH]\n` +
@@ -45,10 +54,10 @@ export async function sendOtpEmail(params: SendOtpEmailParams): Promise<boolean>
           },
         ],
         from: {
-          email: 'no-reply@121meet.ai',
+          email: fromAddress,
           name: chamberName,
         },
-        template_id: 'd-chamber-otp-verification',
+        template_id: templateId,
       }),
     });
 

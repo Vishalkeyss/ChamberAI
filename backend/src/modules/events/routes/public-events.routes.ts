@@ -3,9 +3,8 @@ import type { Env } from '../../../core/env';
 import type { AppVariables } from '../../../core/context';
 import { successResponse } from '../../../core/shared/response';
 import { AppError, ErrorCodes } from '../../../core/shared/errors';
-import { eventsQuerySchema, eventRegisterSchema } from '../validation/events.validation';
+import { eventsQuerySchema } from '../validation/events.validation';
 import { EventsRepository } from '../repositories/events.repository';
-import { EventRegistrationsRepository } from '../repositories/event-registrations.repository';
 
 export const publicEventsRouter = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -66,37 +65,4 @@ publicEventsRouter.get('/public/events/filters', async (c) => {
   return c.json(successResponse(filters, { requestId }));
 });
 
-/**
- * POST /api/v1/public/events/:id/register
- * Allows public guests to dynamically register or waitlist for events in the database.
- */
-publicEventsRouter.post('/public/events/:id/register', async (c) => {
-  const chamberId = c.get('chamberId');
-  const eventId = c.req.param('id');
-  const requestId = c.get('requestId');
-
-  if (!chamberId) {
-    throw new AppError(ErrorCodes.CHAMBER_NOT_FOUND, 'No chamber context bound to request', 404);
-  }
-
-  const body = await c.req.json().catch(() => ({}));
-  const parsed = eventRegisterSchema.safeParse(body);
-  if (!parsed.success) {
-    throw new AppError(
-      ErrorCodes.VALIDATION_ERROR,
-      parsed.error.errors[0]?.message || 'Invalid registration details',
-      422
-    );
-  }
-
-  const result = await EventRegistrationsRepository.registerEvent(
-    c.env.DB,
-    chamberId,
-    eventId,
-    null,
-    parsed.data
-  );
-
-  return c.json(successResponse(result, { requestId }), 201);
-});
 

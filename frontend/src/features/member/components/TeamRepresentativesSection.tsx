@@ -37,6 +37,7 @@ import {
   type TeamRepresentative,
   type InviteRepresentativePayload,
 } from '../services/business-profile.api';
+import { EMAIL_PLACEHOLDER, PHONE_PLACEHOLDER } from '@/lib/placeholders';
 
 const ACCESS_LEVEL_CARDS: Array<{
   key: TeamRepresentative['accessLevel'];
@@ -179,10 +180,6 @@ export const TeamRepresentativesSection: React.FC<TeamRepresentativesSectionProp
       toast.error('Full Name is required');
       return;
     }
-    if (!editEmail.trim()) {
-      toast.error('Email is required');
-      return;
-    }
 
     try {
       setIsSavingEdit(true);
@@ -190,7 +187,6 @@ export const TeamRepresentativesSection: React.FC<TeamRepresentativesSectionProp
       await updateRepresentative(editRep.id, {
         name: editName.trim(),
         jobTitle: editTitle.trim() || undefined,
-        email: editEmail.trim(),
         phones: cleanPhones,
         socials: {
           linkedin: editLinkedin.trim() || undefined,
@@ -206,7 +202,6 @@ export const TeamRepresentativesSection: React.FC<TeamRepresentativesSectionProp
                 ...r,
                 name: editName.trim(),
                 jobTitle: editTitle.trim() || null,
-                email: editEmail.trim(),
                 phones: cleanPhones,
                 socials: {
                   linkedin: editLinkedin.trim() || undefined,
@@ -493,7 +488,7 @@ export const TeamRepresentativesSection: React.FC<TeamRepresentativesSectionProp
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@company.com"
+                placeholder={EMAIL_PLACEHOLDER}
                 className="mt-1 text-sm bg-white dark:bg-slate-900"
               />
             </div>
@@ -627,11 +622,12 @@ export const TeamRepresentativesSection: React.FC<TeamRepresentativesSectionProp
                 <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                   Email
                 </Label>
-                <Input
+                <Input placeholder={EMAIL_PLACEHOLDER}
                   type="email"
                   value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  placeholder="name@company.com"
+                  readOnly
+                  disabled
+                  title="Email is the sign-in identity and cannot be changed here"
                   className="mt-1 text-sm bg-white dark:bg-slate-900"
                 />
               </div>
@@ -654,7 +650,7 @@ export const TeamRepresentativesSection: React.FC<TeamRepresentativesSectionProp
                           updated[idx] = e.target.value;
                           setEditPhones(updated);
                         }}
-                        placeholder="e.g. (512) 555-0134"
+                        placeholder={PHONE_PLACEHOLDER}
                         className="pl-9 text-sm bg-white dark:bg-slate-900"
                       />
                     </div>

@@ -25,6 +25,7 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { isValidPhoneNumber, normalizePhoneNumber } from '@/lib/validation';
+import { EMAIL_PLACEHOLDER, PHONE_PLACEHOLDER } from '@/lib/placeholders';
 
 export interface TrackApplicationModalProps {
   isOpen: boolean;
@@ -275,7 +276,7 @@ export const TrackApplicationModal: React.FC<TrackApplicationModalProps> = ({
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value.trim())}
-                  placeholder="you@business.com"
+                  placeholder={EMAIL_PLACEHOLDER}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-input bg-background text-foreground text-xs md:text-sm placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/40 transition-colors"
                 />
               </div>
@@ -369,7 +370,7 @@ export const TrackApplicationModal: React.FC<TrackApplicationModalProps> = ({
                         type="tel"
                         value={editPhone}
                         onChange={(e) => setEditPhone(e.target.value)}
-                        placeholder="+1 (555) 019-2834"
+                        placeholder={PHONE_PLACEHOLDER}
                         className="w-full px-3 py-2 rounded-xl border border-input bg-background text-foreground text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/40"
                       />
                     </div>

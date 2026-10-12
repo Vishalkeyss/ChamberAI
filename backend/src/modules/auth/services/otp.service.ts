@@ -1,6 +1,7 @@
 import { AppContext } from '../../../core/context';
 import { AppError, ErrorCodes } from '../../../core/shared/errors';
-import { generateSecureOtp, hashOtp, generateSessionToken, generatePrefixedId } from '../../../core/shared/crypto';
+import { generateSecureOtp, hashOtp, generateSessionToken } from '../../../core/shared/crypto';
+import { newId } from '../../../core/shared/ids';
 import {
   RequestOtpInput,
   VerifyOtpInput,
@@ -10,6 +11,7 @@ import {
 } from '../validation/otp.validation';
 import { sendOtpEmail } from './email-delivery.service';
 import { sendOtpSms } from './sms-delivery.service';
+import { getRuntimeConfig } from '../../../core/config';
 import { SessionService, type CachedSessionRole } from './session.service';
 
 function splitName(fullName?: string | null): { firstName: string; lastName: string } {
@@ -18,6 +20,24 @@ function splitName(fullName?: string | null): { firstName: string; lastName: str
   const firstName = parts[0] || '';
   const lastName = parts.slice(1).join(' ') || '';
   return { firstName, lastName };
+}
+
+// Highest-first precedence of chamber roles (canonical system roles).
+const ROLE_PRECEDENCE = ['super_admin', 'full_admin', 'billing_admin', 'chapter_admin', 'group_admin', 'member'];
+const CHAMBER_ADMIN_ROLES = ['full_admin', 'billing_admin', 'chapter_admin', 'group_admin'];
+
+function pickHighestRole(roleIds: string[]): string {
+  for (const role of ROLE_PRECEDENCE) {
+    if (roleIds.includes(role)) return role;
+  }
+  return 'member';
+}
+
+function timingSafeEqualStr(a: string, b: string): boolean {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
 
 export interface UserSessionPayload {
@@ -118,30 +138,22 @@ export class OtpService {
         .bind(normalizedIdentifier, chamberId, chamberId)
         .first<{ id: string; email: string; phone: string | null; status: string; highest_role: string; chamber_id: string }>();
 
-      // Fallback 1: If not found under current chamber, look up active member across the platform
-      if (!user) {
-        user = await c.env.DB.prepare(
-          `SELECT id, email, phone, status, highest_role, chamber_id FROM users
-           WHERE ${identifierClause} AND status = 'active' LIMIT 1`
-        )
-          .bind(normalizedIdentifier)
-          .first<{ id: string; email: string; phone: string | null; status: string; highest_role: string; chamber_id: string }>();
-      }
-
-      // Fallback 2: Check if there is an approved application whose user account has not yet been provisioned
+      // Fallback: an approved application (in this chamber) whose user account has not yet been provisioned
       if (!user) {
         const approvedApp = await c.env.DB.prepare(
           `SELECT id, chamber_id, applicant_name, business_email, business_phone, business_name, plan_id
            FROM applications
            WHERE ${isPhone ? 'business_phone = ?' : 'business_email = ?'} AND status = 'approved'
+             AND converted_user_id IS NULL
+             AND (chamber_id = ? OR ? IS NULL)
            LIMIT 1`
         )
-          .bind(normalizedIdentifier)
+          .bind(normalizedIdentifier, chamberId, chamberId)
           .first<any>();
 
         if (approvedApp) {
           const now = new Date().toISOString();
-          const newUserId = generatePrefixedId('usr');
+          const newUserId = await newId(c.env.DB, 'users', 'USR', { chamberId: approvedApp.chamber_id });
           const token = generateSessionToken();
 
           await c.env.DB.batch([
@@ -165,7 +177,7 @@ export class OtpService {
                 id, chamber_id, user_id, role_id, scope_type, scope_id, granted_by, granted_at, is_active
               ) VALUES (?, ?, ?, 'member', 'chamber', ?, ?, ?, 1)`
             ).bind(
-              generatePrefixedId('ura'),
+              await newId(c.env.DB, 'user_role_assignments', 'URA', { chamberId: approvedApp.chamber_id }),
               approvedApp.chamber_id,
               newUserId,
               approvedApp.chamber_id,
@@ -177,14 +189,13 @@ export class OtpService {
             ).bind(newUserId, now, approvedApp.id),
           ]);
 
-          user = {
-            id: newUserId,
-            email: approvedApp.business_email,
-            phone: approvedApp.business_phone,
-            status: 'active',
-            highest_role: 'member',
-            chamber_id: approvedApp.chamber_id,
-          };
+          // INSERT OR IGNORE may have skipped the insert: read back the real row.
+          user = await c.env.DB.prepare(
+            `SELECT id, email, phone, status, highest_role, chamber_id FROM users
+             WHERE email = ? AND chamber_id = ? LIMIT 1`
+          )
+            .bind(approvedApp.business_email.toLowerCase(), approvedApp.chamber_id)
+            .first<{ id: string; email: string; phone: string | null; status: string; highest_role: string; chamber_id: string }>();
         }
       }
 
@@ -287,7 +298,7 @@ export class OtpService {
     // 4. Generate Secure 6-Digit OTP and Hash
     const code = generateSecureOtp();
     const otpHash = await hashOtp(code);
-    const otpId = generatePrefixedId('otp');
+    const otpId = await newId(c.env.DB, 'otp_codes', 'OTP', { chamberId, suffixLength: 8 });
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
 
     // 5. Delete all previous OTPs for this identifier+portal — one active code at a time
@@ -319,9 +330,11 @@ export class OtpService {
       .run();
 
 
-    // 8. Dispatch OTP via the appropriate channel
+    // 8. Dispatch OTP via the appropriate channel (fails closed outside local dev, BUG-049)
+    const config = getRuntimeConfig(c.env);
+    let delivered: boolean;
     if (isPhone) {
-      await sendOtpSms({
+      delivered = await sendOtpSms({
         to: normalizedIdentifier,
         code,
         portal,
@@ -329,15 +342,23 @@ export class OtpService {
         twilioAccountSid: c.env.TWILIO_ACCOUNT_SID,
         twilioAuthToken: c.env.TWILIO_AUTH_TOKEN,
         twilioFromNumber: c.env.TWILIO_FROM_NUMBER,
+        allowConsoleFallback: config.isLocal,
       });
     } else {
-      await sendOtpEmail({
+      delivered = await sendOtpEmail({
         to: normalizedIdentifier,
         code,
         portal,
         chamberName,
         sendgridApiKey: c.env.SENDGRID_API_KEY,
+        fromAddress: config.emailFromAddress,
+        templateId: config.sendgridOtpTemplateId,
+        allowConsoleFallback: config.isLocal,
       });
+    }
+    if (!delivered) {
+      await c.env.DB.prepare('DELETE FROM otp_codes WHERE id = ?').bind(otpId).run().catch(() => undefined);
+      throw new AppError(ErrorCodes.INTERNAL_ERROR, 'Verification code could not be sent. Please try again later.', 503);
     }
 
     return {
@@ -404,14 +425,25 @@ export class OtpService {
       );
     }
 
-    // 3. Atomically increment attempts
-    const newAttempts = record.attempts + 1;
-    await c.env.DB.prepare('UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ?')
+    // An OTP issued for one chamber can never be redeemed from another chamber's host.
+    if (chamberId && record.chamber_id && record.chamber_id !== chamberId) {
+      throw new AppError(
+        ErrorCodes.INVALID_CREDENTIALS,
+        'No active verification request found. Please request a new code.',
+        400
+      );
+    }
+
+    // 3. Atomically increment attempts (conditional so parallel guesses cannot exceed the limit)
+    const bumped = await c.env.DB.prepare(
+      'UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ? AND attempts < max_attempts'
+    )
       .bind(record.id)
       .run();
+    const newAttempts = record.attempts + 1;
 
     // 4. Guard against max attempts
-    if (newAttempts > record.max_attempts) {
+    if (!bumped.meta?.changes || newAttempts > record.max_attempts) {
       await c.env.DB.prepare(`DELETE FROM otp_codes WHERE id = ?`)
         .bind(record.id)
         .run();
@@ -422,10 +454,10 @@ export class OtpService {
       );
     }
 
-    // 5. Compare cryptographic hash (with local dev DX convenience fallback 123456)
-    const isDevBypass = c.env.ENVIRONMENT === 'development' && incomingCode === '123456';
+    // 5. Compare cryptographic hash (no static/dev bypass code — local dev reads the
+    //    generated code from the terminal log in email/sms delivery services)
     const computedHash = await hashOtp(incomingCode);
-    if (!isDevBypass && computedHash !== record.otp_hash) {
+    if (!timingSafeEqualStr(computedHash, record.otp_hash)) {
       const remaining = record.max_attempts - newAttempts;
       if (remaining <= 0) {
         await c.env.DB.prepare(`DELETE FROM otp_codes WHERE id = ?`)
@@ -445,9 +477,22 @@ export class OtpService {
     }
 
     // 6. Mark verified then delete (session is the source of truth from now on)
-    await c.env.DB.prepare('UPDATE otp_codes SET is_verified = 1 WHERE id = ?')
+    // Single-use: only one concurrent verify can consume the code.
+    const consumed = await c.env.DB.prepare(
+      'UPDATE otp_codes SET is_verified = 1 WHERE id = ? AND is_verified = 0'
+    )
       .bind(record.id)
       .run();
+    if (!consumed.meta?.changes) {
+      throw new AppError(
+        ErrorCodes.INVALID_CREDENTIALS,
+        'No active verification request found. Please request a new code.',
+        400
+      );
+    }
+
+    // The chamber the code was issued for is authoritative for the session.
+    const loginChamberId = record.chamber_id || chamberId;
 
     // 7. Resolve User Entity & Role Scopes based on portal
     let userResponse: {
@@ -496,13 +541,13 @@ export class OtpService {
         pointsBalance: 0,
       };
     } else {
-      let user = await c.env.DB.prepare(
+      const user = await c.env.DB.prepare(
         `SELECT id, email, phone, name, avatar_url, chamber_id, points_balance
          FROM users
          WHERE ${userWhereClause} AND (chamber_id = ? OR ? IS NULL)
          LIMIT 1`
       )
-        .bind(normalizedIdentifier, chamberId, chamberId)
+        .bind(normalizedIdentifier, loginChamberId, loginChamberId)
         .first<{
           id: string;
           email: string;
@@ -512,25 +557,6 @@ export class OtpService {
           chamber_id: string;
           points_balance?: number;
         }>();
-
-      if (!user) {
-        user = await c.env.DB.prepare(
-          `SELECT id, email, phone, name, avatar_url, chamber_id, points_balance
-           FROM users
-           WHERE ${userWhereClause} AND status = 'active'
-           LIMIT 1`
-        )
-          .bind(normalizedIdentifier)
-          .first<{
-            id: string;
-            email: string;
-            phone: string | null;
-            name: string;
-            avatar_url?: string;
-            chamber_id: string;
-            points_balance?: number;
-          }>();
-      }
 
       if (!user) {
         throw new AppError(ErrorCodes.NOT_FOUND, 'User account not found', 404);
@@ -549,7 +575,7 @@ export class OtpService {
 
       const scopes: Record<string, string[]> = {};
       const rolesList: CachedSessionRole[] = [];
-      let highestRole = portal === 'chamber_admin' ? 'full_admin' : 'member';
+      let highestRole = 'member';
 
       if (roleAssignments.results && roleAssignments.results.length > 0) {
         for (const ra of roleAssignments.results) {
@@ -563,13 +589,22 @@ export class OtpService {
             scopes[ra.scope_type].push(ra.scope_id);
           }
         }
-        highestRole = roleAssignments.results[0].role_id;
+        highestRole = pickHighestRole(roleAssignments.results.map((ra) => ra.role_id));
       } else {
         rolesList.push({
           roleId: 'member',
           scopeType: 'chamber',
           scopeId: record.chamber_id || chamberId || '',
         });
+      }
+
+      // Admin portal: never grant an admin session without an active admin assignment.
+      if (portal === 'chamber_admin' && !CHAMBER_ADMIN_ROLES.includes(highestRole)) {
+        throw new AppError(
+          ErrorCodes.FORBIDDEN,
+          'No administrative account found for this chamber',
+          403
+        );
       }
 
       if (portal === 'member') {
@@ -656,7 +691,7 @@ export class OtpService {
 
     // 9. Audit log entry for login (non-fatal)
     try {
-      const auditId = generatePrefixedId('aud');
+      const auditId = await newId(c.env.DB, 'platform_audit_logs', 'PAUD', { chamberId: record.chamber_id || chamberId, suffixLength: 6, skipUniqueCheck: true });
       await c.env.DB.prepare(
         `INSERT INTO platform_audit_logs (
            id, chamber_id, actor_id, actor_role, actor_name, action, target_type, target_id, ip_address, user_agent, created_at

@@ -22,8 +22,23 @@ export interface Env {
   /** "development" | "staging" | "production" */
   ENVIRONMENT: string;
 
-  /** Root platform domain used by tenant-resolver (e.g. "121meet.com") */
+  /** Root platform domain: chamber sites are `<subdomain>.<PLATFORM_DOMAIN>`. Read via core/config. */
   PLATFORM_DOMAIN: string;
+
+  /** [OPTIONAL] "true" = accept tenant from X-Chamber-Slug header (staging on workers.dev only). */
+  ALLOW_TENANT_HEADER?: string;
+
+  /** Static frontend assets (staging Worker serves the built SPA). */
+  ASSETS?: Fetcher;
+
+  /** [OPTIONAL] Extra exact CORS origins, comma separated (e.g. a separately hosted frontend). */
+  ALLOWED_ORIGINS?: string;
+
+  /** [REQUIRED staging/production] Sender address for transactional email (OTP). */
+  EMAIL_FROM_ADDRESS?: string;
+
+  /** [REQUIRED staging/production] SendGrid dynamic template id for the OTP email. */
+  SENDGRID_OTP_TEMPLATE_ID?: string;
 
   // ── Secrets (set via `wrangler secret put` or .dev.vars) ────────────────
 

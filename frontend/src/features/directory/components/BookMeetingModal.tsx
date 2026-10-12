@@ -31,18 +31,8 @@ export const BookMeetingModal: React.FC<BookMeetingModalProps> = ({
   const contactName = contact?.name || business.name;
 
   const handleSubmit = (e: React.FormEvent) => {
+    // No booking API yet (Prompt 05.1) — never report a fake success.
     e.preventDefault();
-    setSubmitting(true);
-    // Simulate booking request (will integrate with Prompt 05.1 networking API)
-    setTimeout(() => {
-      setSubmitting(false);
-      setBookedSuccess(true);
-      setTimeout(() => {
-        setBookedSuccess(false);
-        setNotes('');
-        onClose();
-      }, 1800);
-    }, 600);
   };
 
   const handleClose = () => {
@@ -189,7 +179,7 @@ export const BookMeetingModal: React.FC<BookMeetingModalProps> = ({
             {/* Footer */}
             <div className="flex items-center justify-between pt-2">
               <span className="text-[11px] text-muted-foreground">
-                Calendar invite sent upon acceptance
+                1:1 meeting booking is coming soon
               </span>
               <div className="flex items-center gap-2">
                 <button
@@ -201,7 +191,8 @@ export const BookMeetingModal: React.FC<BookMeetingModalProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled
+                  title="Available once 1:1 networking (Prompt 05.1) is live"
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 transition cursor-pointer shadow-xs"
                 >
                   {submitting ? (

@@ -3,7 +3,7 @@
 > **Master Plan Reference:** [`MASTER_IMPLEMENTATION_PLAYBOOK.md`](file:///e:/Chamber/MASTER_IMPLEMENTATION_PLAYBOOK.md)  
 > **Total Phases:** 15 (Phases 00 – 14)  
 > **Total Prompts:** 72  
-> **Status:** Phase 02 in progress
+> **Status:** Phase 05 in progress (05.2–05.6 done; 05.1 on hold) · 13.2 partial · Staging deployed · Last updated 2026-10-09
 
 ---
 
@@ -11,7 +11,7 @@
 
 | Total Prompts | Completed | In Progress | Pending | Progress (%) |
 |:---:|:---:|:---:|:---:|:---:|
-| **72** | **12** | **0** | **60** | **16.7%** |
+| **72** | **25** | **1** | **46** | **34.7%** |
 
 ---
 
@@ -22,9 +22,9 @@
 | **Phase 00** | Foundation & Core Infrastructure | 3 | ✅ Completed | 3 / 3 |
 | **Phase 01** | Authentication, Sessions & User Security | 4 | ✅ Completed | 4 / 4 |
 | **Phase 02** | Membership Plans, Applications, Review & Billing | 5 | ✅ Completed | 5 / 5 |
-| **Phase 03** | Business Profiles & Member Directory | 2 | ⏳ Pending | 0 / 2 |
-| **Phase 04** | Events, Ticketing, Sponsorships & Day-Of Check-In | 6 | ⏳ Pending | 0 / 6 |
-| **Phase 05** | Networking, 1:1 Meetings, Messaging & CRM | 6 | ⏳ Pending | 0 / 6 |
+| **Phase 03** | Business Profiles & Member Directory | 2 | ✅ Completed (spec gaps open) | 2 / 2 |
+| **Phase 04** | Events, Ticketing, Sponsorships & Day-Of Check-In | 6 | ✅ Completed (OD-001 payment pending) | 6 / 6 |
+| **Phase 05** | Networking, 1:1 Meetings, Messaging & CRM | 6 | 🔄 In Progress (05.1 on hold) | 5 / 6 |
 | **Phase 06** | Community Chapters, Interest Groups & Polls | 4 | ⏳ Pending | 0 / 4 |
 | **Phase 07** | Content Publishing, Announcements, Blog, Media & Jobs | 6 | ⏳ Pending | 0 / 6 |
 | **Phase 08** | Learning Management (LMS), CEU & Loyalty Rewards | 4 | ⏳ Pending | 0 / 4 |
@@ -76,8 +76,10 @@
 ---
 
 ### Phase 03: Business Profiles & Member Directory
-- [ ] **Prompt 03.1**: Business Profile Management, Media Uploads & Team Representatives `[⏳ PENDING]`
-- [ ] **Prompt 03.2**: Member & Business Directory Search, Multi-Facet Filtering & Direct Connect `[⏳ PENDING]`
+- [x] **Prompt 03.1**: Business Profile Management, Media Uploads & Team Representatives `[✅ COMPLETED]`
+  - *Status:* Audited & security fixes applied (BUG-029…039). Spec gaps (crop modal, invite OTP, dedicated pages) + OD-009/010/013 open — see PENDING_BUGS.md.
+- [x] **Prompt 03.2**: Member & Business Directory Search, Multi-Facet Filtering & Direct Connect `[✅ COMPLETED]`
+  - *Status:* Audited & fixed (BUG-040…046). Send Message / Book 1:1 disabled until 05.1/05.2. Spec gaps (chapter dropdown, verified toggle, grid/list) + OD-014…016 open.
 
 ---
 
@@ -87,20 +89,47 @@
   - *Backend Files:* `backend/src/db/schema/event-registrations.schema.ts`, `backend/src/db/schema/event-feedback.schema.ts`, `backend/src/db/schema/event-sponsors.schema.ts`, `backend/src/modules/events/routes/admin-events-tabs.routes.ts`, `backend/src/modules/events/repositories/event-registrations.repository.ts`, `backend/src/test/admin-events-tabs.test.ts`
   - *Frontend Files:* `frontend/src/features/admin/events/services/admin-events.api.ts`, `frontend/src/features/admin/events/pages/AdminEventDetailPage.tsx`, `frontend/src/features/admin/events/pages/AdminEventsListPage.tsx`, `frontend/src/features/admin/events/components/tabs/OverviewTab.tsx`, `frontend/src/features/admin/events/components/tabs/AttendeesTab.tsx`, `frontend/src/features/admin/events/components/tabs/WaitlistTab.tsx`, `frontend/src/features/admin/events/components/tabs/FeedbackTab.tsx`, `frontend/src/features/admin/events/components/tabs/SponsorsTab.tsx`, `frontend/src/App.tsx`
   - *Status:* Completed & Validated (9-tab operations console `/admin/events/:id`, URL `?tab=` sync, Attendees search & live check-in toggle, Waitlist priority queue promotion, feedback/CSAT rating, chapter/group admin scoped security with 403 enforcement, 108 backend tests passing, frontend Vite production bundle built).
-- [ ] **Prompt 04.3**: Member & Guest Event Registration, Promo Codes & Payment Checkout Modal `[⏳ PENDING]`
-- [ ] **Prompt 04.4**: Event Sponsorship Packages & Member Self-Service Booking `[⏳ PENDING]`
-- [ ] **Prompt 04.5**: Post-Event Member Feedback & Attendance Certificates Engine `[⏳ PENDING]`
-- [ ] **Prompt 04.6**: Admin Event Creation Wizard, Recurrence Engine & Multi-Channel Syndication `[⏳ PENDING]`
+- [x] **Prompt 04.3**: Member & Guest Event Registration, Promo Codes & Payment Checkout Modal `[✅ COMPLETED]`
+  - *Backend:* `events/services/event-registration.service.ts`, `events/routes/event-registration.routes.ts`, `billing/services/payment-gateway.service.ts`, `test/event-registration.test.ts`
+  - *Frontend:* `events/components/EventRegistrationModal.tsx`, `PromoCodeInput.tsx`, `TicketSummaryCard.tsx`
+  - *Status:* Atomic seat/ticket/promo/points claims, waitlist, pay-later invoices. Online card payment returns 503 until gateway (OD-001).
+- [x] **Prompt 04.4**: Event Sponsorship Packages & Member Self-Service Booking `[✅ COMPLETED]`
+  - *Backend:* migration `0016_sponsorship_capacity_feedback_unique.sql`, `events/routes/sponsorships.routes.ts`, `events/services/sponsorships.service.ts`, `events/repositories/event-sponsors.repository.ts`, `test/sponsorships.test.ts`
+  - *Frontend:* `events/components/EventSponsorshipModal.tsx`, `EventSponsorsSection.tsx`, `admin/events/components/tabs/SponsorsTab.tsx`, `SponsorshipTiersBuilder.tsx` (max sponsors)
+  - *Status:* Atomic tier capacity, Net 30 sponsorship invoices, public wall (paid only), admin offline record / status / remove with chapter & billing scope. Card payment 503 until OD-001.
+- [x] **Prompt 04.5**: Post-Event Member Feedback & Attendance Certificates Engine `[✅ COMPLETED]`
+  - *Backend:* `events/routes/feedback.routes.ts`, `events/services/event-feedback.service.ts`, `events/services/certificate-generator.service.ts`, `events/repositories/event-feedback.repository.ts`, `test/feedback-certificate.test.ts`
+  - *Frontend:* `events/components/EventFeedbackModal.tsx`, `CertificateModal.tsx` (past-event recap)
+  - *Status:* Check-in required (403), one review per attendee (409), +25 points with ledger, printable HTML certificate (OD-039 b). NPS replaced by "would attend again" (OD-035).
+- [x] **Prompt 04.6**: Admin Event Creation Wizard, Recurrence Engine & Multi-Channel Syndication `[✅ COMPLETED]`
+  - *Backend:* `events/routes/admin-events.routes.ts`, `events/services/event-creation.service.ts`, `events/services/recurrence.ts`, `events/repositories/events-admin.repository.ts`, `test/event-creation.test.ts`
+  - *Frontend:* `admin/events/components/AdminEventWizardModal.tsx`, `RecurrenceConfigurator.tsx`, `TicketTiersBuilder.tsx`, `SponsorshipTiersBuilder.tsx`, `PromoCodesBuilder.tsx`
+  - *Status:* Create/edit (modal per reference UI), recurrence (max 52), series edit, delete→cancel when registered. Syndication = flags only; notifications not built.
 
 ---
 
 ### Phase 05: Networking, 1:1 Meetings, Messaging & CRM
-- [ ] **Prompt 05.1**: 1-to-1 Networking Meeting Scheduling & Status Lifecycle `[⏳ PENDING]`
-- [ ] **Prompt 05.2**: Member Direct Messaging Inbox, Threaded Chat & Read Receipts `[⏳ PENDING]`
-- [ ] **Prompt 05.3**: B2B Business Referrals, Multi-Contact Lead Passing & Lifecycle Tracking `[⏳ PENDING]`
-- [ ] **Prompt 05.4**: QR Digital Business Card & Contact vCard Exchange Engine `[⏳ PENDING]`
-- [ ] **Prompt 05.5**: Member Lightweight CRM, Deals Pipeline & Kanban Tasks `[⏳ PENDING]`
-- [ ] **Prompt 05.6**: Chamber Mentorship Program, Matching & Relationships `[⏳ PENDING]`
+- [ ] **Prompt 05.1**: 1-to-1 Networking Meeting Scheduling & Status Lifecycle `[⏸️ ON HOLD — user]`
+- [x] **Prompt 05.2**: Member Direct Messaging Inbox, Threaded Chat & Read Receipts `[✅ COMPLETED]`
+  - *Backend:* `networking/routes/messages.routes.ts`, `services/messages.service.ts`, `repositories/messages.repository.ts`, `repositories/network-members.repository.ts`, migration `0017_networking_messages_referrals.sql` (indexes), `test/messages.test.ts`
+  - *Frontend:* `networking/pages/MessagesPage.tsx`, `components/ConversationsList.tsx`, `ChatThreadView.tsx`, `QuickChatDrawer.tsx`, `hooks/useUnreadMessages.ts`; Topbar Messages badge; Directory "Send message" → drawer
+  - *Status:* Same-chamber only, auto read receipts, unread badge, in-app notification. Skipped: WebSocket (polling, OD-056), online dot / emoji (OD-058), email digest (OD-059), moderation (OD-060).
+- [x] **Prompt 05.3**: B2B Business Referrals, Multi-Contact Lead Passing & Lifecycle Tracking `[✅ COMPLETED]`
+  - *Backend:* `networking/routes/referrals.routes.ts`, `services/referrals.service.ts`, `repositories/referrals.repository.ts`, migration 0017 (`referrals.converted_value`), `test/referrals.test.ts`
+  - *Frontend:* `networking/pages/ReferralsPage.tsx`, `components/ReferralCard.tsx`, `GiveReferralModal.tsx` (3-step wizard)
+  - *Status:* Atomic referral + contacts + 200 points + ledger + notifications; recipient-only forward status updates with deal value. BUG-056 fixed (multi-business member: referral shown only under Received; cannot refer any own business). Skipped: admin metrics (OD-068), multi-business picker (OD-067), email alerts (OD-059).
+- [x] **Prompt 05.4**: QR Digital Business Card & Contact vCard Exchange Engine `[✅ COMPLETED]`
+  - *Backend:* migration `0018_business_card.sql`, `networking/routes/business-card.routes.ts`, `services/business-card.service.ts`, `services/vcard.service.ts`, `repositories/business-card.repository.ts`, `test/business-card.test.ts`
+  - *Frontend:* `networking/pages/DigitalCardPage.tsx`, `components/BusinessCard3D.tsx`, `public/pages/PublicCardPage.tsx` (`/card/:token`)
+  - *Status:* Live card data, flip card with local QR + chamber logo, vCard (RFC 6350), share / QR PNG / print, public card with view analytics (owner excluded). Skipped: scan + saved contacts (OD-075), Wallet passes (OD-076), Book 1:1 CTA (05.1 hold).
+- [x] **Prompt 05.5**: Member Lightweight CRM, Deals Pipeline & Kanban Tasks `[✅ COMPLETED]`
+  - *Backend:* migration `0019_crm_tasks.sql`, `db/schema/crm.schema.ts`, `modules/crm/{routes,services,repositories,validation}`, `modules/tasks/{routes,services,repositories,validation}`, `test/crm-tasks.test.ts`
+  - *Frontend:* `features/crm/pages/CrmPipelinePage.tsx` (+ PipelineKanbanBoard, ContactCard, ContactDetailDrawer, AddContactModal), `features/tasks/pages/KanbanTasksPage.tsx` (+ TaskBoard, TaskCard, TaskFormModal); quick conversion from received referrals / directory profile
+  - *Status:* Private per-owner CRM (6 stages, metrics + win rate, drag + menu move, timeline, CSV export) and Kanban tasks (quick add, urgent priority, overdue, contact link, completed_at). Skipped: 09:00 reminders (OD-086, no scheduler), super-admin view (OD-088).
+- [x] **Prompt 05.6**: Chamber Mentorship Program, Matching & Relationships `[✅ COMPLETED]`
+  - *Backend:* migration `0020_mentorship.sql`, `db/schema/mentorship.schema.ts`, `modules/mentorship/{routes,services,repositories,validation}`, `test/mentorship.test.ts`
+  - *Frontend:* `features/mentorship/pages/MentorshipHubPage.tsx` (+ MentorCard, MentorshipRequestModal, ActiveConnectionCard, RequestCard, MentorProfileEditor), `features/admin/mentorship/AdminMentorshipPage.tsx` (`/admin/mentorship`)
+  - *Status:* 3-tab hub (find / requests incl. active + completed / profile; "My Connections" removed by user), atomic capacity + counters, duplicate guard (unique index), decline reason, shared notes, mentee rating on completion, in-app notifications + audit, admin KPIs / pairs / pause (chapter admin scoped). Skipped: AI matching (OD-093), Schedule 1:1 (05.1 hold), email alerts (OD-100), super-admin view.
 
 ---
 
@@ -165,7 +194,7 @@
 
 ### Phase 13: Chamber Administration, Automations, Wizard & Scoped Portals
 - [ ] **Prompt 13.1**: Chamber Admin Dashboard, Daily Briefing & Health Metrics `[⏳ PENDING]`
-- [ ] **Prompt 13.2**: 5-Step Guided Chamber Setup & Admin Onboarding Wizard `[⏳ PENDING]`
+- [ ] **Prompt 13.2**: 5-Step Guided Chamber Setup & Admin Onboarding Wizard `[🟡 PARTIAL]` — wizard on first admin portal entry, sidebar item only while incomplete, re-access guard (409), Zod validation, encrypted gateway keys (never returned), audit log, browser draft. Open: step 5 member import not persisted, chamber logo stored as data URL (no R2 upload), no currency/timezone/support-email fields.
 - [ ] **Prompt 13.3**: Financial Accounting Exports, Sync History & Automated Schedules `[⏳ PENDING]`
 - [ ] **Prompt 13.4**: Trigger-Based Marketing Automations, Multi-Step Sequences & Recipient Tracking `[⏳ PENDING]`
 - [ ] **Prompt 13.5**: Custom Form Builder & Standalone Marketing Landing Pages `[⏳ PENDING]`
@@ -183,3 +212,10 @@
 - [ ] **Prompt 14.4**: Super Admin Support Desk & Chamber Escalation Requests `[⏳ PENDING]`
 - [ ] **Prompt 14.5**: Global Security Policies, SSO, 2FA & Universal Audit Trail `[⏳ PENDING]`
 - [ ] **Prompt 14.6**: Global Settings, Platform Integrations Hub & Roles Management `[⏳ PENDING]`
+
+---
+
+## Platform / Deployment (outside the 72 prompts)
+- ✅ Central config: `backend/src/core/config`, `frontend/src/core/config/app-config.ts`; staging/production fail closed (503) on missing config; CORS allowlist; OTP never logged outside local dev.
+- ✅ Staging on Cloudflare workers.dev (`chamber-staging`, one Worker for frontend + API, chambers at `/c/<slug>`). See `DEPLOYMENT.md`.
+- ⏳ Production: needs domain routing (OD-110), hosting (OD-111), R2, SendGrid domain authentication, payment gateway (OD-001).
