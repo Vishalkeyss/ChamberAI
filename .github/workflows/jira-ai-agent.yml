@@ -475,9 +475,7 @@ jobs:
                 arguments: {
                   cloudId,
                   issueIdOrKey: issueKey,
-                  transition: {
-                    id: targetTransitionId
-                  }
+                  transitionId: String(targetTransitionId)
                 }
               });
 
@@ -1154,7 +1152,7 @@ jobs:
               tools.tools.find(
                 tool =>
                   tool.name ===
-                  "addCommentToJiraIssue"
+                  "addOrEditJiraIssueComment"
               );
 
             if (!transitionTool) {
@@ -1205,7 +1203,7 @@ jobs:
                 const commentResult =
                   await client.callTool({
                     name:
-                      "addCommentToJiraIssue",
+                      "addOrEditJiraIssueComment",
                     arguments:
                       commentArguments
                   });
@@ -1228,7 +1226,7 @@ jobs:
               }
             } else {
               console.log(
-                "Warning: addCommentToJiraIssue unavailable."
+                "Warning: addOrEditJiraIssueComment unavailable."
               );
             }
 
@@ -1273,9 +1271,7 @@ jobs:
                 arguments: {
                   cloudId,
                   issueIdOrKey: issueKey,
-                  transition: {
-                    id: reviewTransitionId
-                  }
+                  transitionId: String(reviewTransitionId)
                 }
               });
 
@@ -1420,7 +1416,7 @@ jobs:
               tools.tools.find(
                 tool =>
                   tool.name ===
-                  "addCommentToJiraIssue"
+                  "addOrEditJiraIssueComment"
               );
 
             if (!transitionTool) {
@@ -1470,9 +1466,7 @@ jobs:
                 arguments: {
                   cloudId,
                   issueIdOrKey: issueKey,
-                  transition: {
-                    id: todoTransitionId
-                  }
+                  transitionId: String(todoTransitionId)
                 }
               });
 
@@ -1533,7 +1527,7 @@ jobs:
 
                 await client.callTool({
                   name:
-                    "addCommentToJiraIssue",
+                    "addOrEditJiraIssueComment",
                   arguments:
                     commentArguments
                 });
