@@ -45,7 +45,7 @@ jobs:
           JIRA_CLOUD_ID: "79478d62-55e6-4f8a-9774-9ca35ff386c3"
           GH_TOKEN: ${{ github.token }}
           REPO: "Vishalkeyss/ChamberAI"
-          BASE_BRANCH: "vishal_test"
+          BASE_BRANCH: "vishal_dev"
           AI_BRANCH: "ai-agent"
         shell: bash
         run: |
@@ -324,7 +324,7 @@ jobs:
             //
             // ai-agent is an automation-owned permanent branch.
             // Since there is no open PR, it is safe to synchronize it
-            // to the latest vishal_test before starting a new task.
+            // to the latest vishal_dev before starting a new task.
             // --------------------------------------------------------
 
             const aiResponse = await githubRequest(
@@ -570,12 +570,12 @@ jobs:
 
           git checkout -B ai-agent origin/ai-agent
 
-          git reset --hard origin/vishal_test
+          git reset --hard origin/vishal_dev
 
           git clean -fd
 
           echo ""
-          echo "ai-agent is now based on vishal_test."
+          echo "ai-agent is now based on vishal_dev."
 
 
       # ============================================================
@@ -637,7 +637,7 @@ jobs:
           - Respect tenant isolation and multi-tenant architecture.
           - Do not hardcode secrets, credentials, tokens, or environment-specific values.
           - Do not modify main.
-          - Do not modify vishal_test.
+          - Do not modify vishal_dev.
           - Work only on the ai-agent branch.
           - Do not create another branch.
 
@@ -1039,7 +1039,7 @@ jobs:
           EXISTING_PR=$(gh pr list \
             --repo Vishalkeyss/ChamberAI \
             --head ai-agent \
-            --base vishal_test \
+            --base vishal_dev \
             --state open \
             --json number,url \
             --jq '.[0]')
@@ -1057,7 +1057,7 @@ jobs:
 
           PR_URL=$(gh pr create \
             --repo Vishalkeyss/ChamberAI \
-            --base vishal_test \
+            --base vishal_dev \
             --head ai-agent \
             --title "${ISSUE_KEY}: AI implementation" \
             --body-file "$RUNNER_TEMP/pr-body.md")
@@ -1325,7 +1325,7 @@ jobs:
           ISSUE_KEY: ${{ steps.prepare.outputs.issue_key }}
           GH_TOKEN: ${{ github.token }}
           REPO: "Vishalkeyss/ChamberAI"
-          BASE_BRANCH: "vishal_test"
+          BASE_BRANCH: "vishal_dev"
           AI_BRANCH: "ai-agent"
         shell: bash
         run: |
@@ -1572,7 +1572,7 @@ jobs:
           echo "Jira task : $ISSUE_KEY"
           echo "Branch    : ai-agent"
           echo "PR        : $PR_URL"
-          echo "Target    : vishal_test"
+          echo "Target    : vishal_dev"
           echo "Jira      : In Review"
 
           echo ""
